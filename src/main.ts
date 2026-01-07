@@ -10,6 +10,7 @@ import { DiscussionModal } from './modals/discussion-modal';
 import { InternalLinkModal } from './modals/internal-link-modal';
 import { ContentTypeModal } from './modals/content-type-modal';
 import { UploadPreviewModal } from './modals/upload-preview-modal';
+import { FolderPickerModal } from './modals/folder-picker-modal';
 import type { CanvasModule, CanvasModuleItem } from './canvas/types';
 import type { ContentType } from './templates/template-types';
 import { buildModule, buildHeader, buildPage, buildLink, buildFile, buildAssignment, buildDiscussion, buildInternalLink } from './templates/template-builders';
@@ -152,10 +153,15 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 				courseData.itemsData
 			);
 
-			// 6. Save to vault
-			await this.saveCourseFile(courseId, courseData.course.name, markdown);
-
 			notice.hide();
+
+			// 6. Prompt for save location
+			const folderPath = await this.promptForFolder();
+			if (folderPath === null) return;
+
+			// 7. Save to vault
+			await this.saveCourseFile(courseId, courseData.course.name, markdown, folderPath);
+
 			new Notice('Course downloaded successfully!');
 		} catch (error) {
 			notice.hide();
@@ -171,6 +177,23 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 		return new Promise((resolve) => {
 			const modal = new CourseInputModal(this.app, (courseId) => {
 				resolve(courseId);
+			});
+			modal.open();
+		});
+	}
+
+	/**
+	 * Prompt user for folder location via modal
+	 * Returns folder path or null if cancelled
+	 */
+	private async promptForFolder(): Promise<string | null> {
+		// Get default folder from active file's location
+		const activeFile = this.app.workspace.getActiveFile();
+		const defaultFolder = activeFile?.parent?.path || '';
+
+		return new Promise((resolve) => {
+			const modal = new FolderPickerModal(this.app, defaultFolder, (folderPath) => {
+				resolve(folderPath);
 			});
 			modal.open();
 		});
@@ -247,11 +270,14 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 	/**
 	 * Save course markdown to vault
 	 */
-	private async saveCourseFile(courseId: string, courseName: string, markdown: string): Promise<void> {
+	private async saveCourseFile(courseId: string, courseName: string, markdown: string, folderPath: string): Promise<void> {
 		// Clean course name for filename - remove special characters
 		const safeName = courseName.replace(/[^a-zA-Z0-9-_ ]/g, '').trim();
 		const filename = `Canvas Course ${courseId} - ${safeName}.md`;
-		const normalizedPath = normalizePath(filename);
+
+		// Combine folder path with filename
+		const fullPath = folderPath ? `${folderPath}/${filename}` : filename;
+		const normalizedPath = normalizePath(fullPath);
 
 		// Check if file exists
 		const existingFile = this.app.vault.getAbstractFileByPath(normalizedPath);

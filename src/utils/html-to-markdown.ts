@@ -35,3 +35,25 @@ export function htmlToMarkdown(html: string): string {
 		return html.replace(/<[^>]+>/g, '').trim();
 	}
 }
+
+/**
+ * Shift heading levels down by specified amount
+ * e.g., with shift=2: # becomes ###, ## becomes ####
+ * This prevents conflicts when content is nested under a ## [type] header
+ */
+function shiftHeadingLevels(markdown: string, shift: number): string {
+	const prefix = '#'.repeat(shift);
+	// Match markdown headings at start of line
+	return markdown.replace(/^(#{1,6})\s/gm, `${prefix}$1 `);
+}
+
+/**
+ * Convert HTML to Markdown with heading levels shifted for nested content
+ * Use this for page/assignment/discussion content that sits under ## [type] headers
+ * @param html HTML string from Canvas API
+ * @returns Clean Markdown string with headings shifted down by 2 levels
+ */
+export function htmlToMarkdownNested(html: string): string {
+	const markdown = htmlToMarkdown(html);
+	return shiftHeadingLevels(markdown, 2);
+}

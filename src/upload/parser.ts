@@ -244,8 +244,9 @@ export class MarkdownParser {
 		while (this.currentLine < this.lines.length) {
 			const line = this.lines[this.currentLine];
 
-			// Stop at next item or module
-			if (line.startsWith('# ') || line.startsWith('## ')) {
+			// Stop at next module (H1) or next module item (H2 with [type] prefix)
+			// But allow regular H2/H3/etc headings within content
+			if (line.startsWith('# ') || this.isModuleItemHeader(line)) {
 				break;
 			}
 
@@ -361,8 +362,9 @@ export class MarkdownParser {
 		while (this.currentLine < this.lines.length) {
 			const line = this.lines[this.currentLine];
 
-			// Stop at next item or module
-			if (line.startsWith('# ') || line.startsWith('## ')) {
+			// Stop at next module (H1) or next module item (H2 with [type] prefix)
+			// But allow regular H2/H3/etc headings within page content
+			if (line.startsWith('# ') || this.isModuleItemHeader(line)) {
 				break;
 			}
 
@@ -378,6 +380,13 @@ export class MarkdownParser {
 			canvasModuleItemId: ids.moduleItemId,
 			body: this.unescapeMarkdown(content.trim())
 		};
+	}
+
+	/**
+	 * Check if a line is a module item header (## [type] Title)
+	 */
+	private isModuleItemHeader(line: string): boolean {
+		return /^##\s+\[(page|assignment|discussion|header|link|file)\]\s+/.test(line);
 	}
 
 	/**

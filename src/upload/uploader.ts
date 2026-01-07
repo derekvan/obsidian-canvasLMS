@@ -40,6 +40,10 @@ export class CourseUploader {
 		this.linkResolver = new LinkResolver();
 		this.courseId = courseId;
 		this.debug = debug;
+		// Enable comparator debug if debug is on
+		if (debug) {
+			setComparatorDebug(true);
+		}
 	}
 
 	/**

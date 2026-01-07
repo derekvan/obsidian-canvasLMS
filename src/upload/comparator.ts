@@ -93,15 +93,33 @@ export function comparePage(
 		changedFields.push('title');
 	}
 
-	// Compare body (normalize HTML for comparison)
-	// Note: Canvas might return markdown OR HTML, so we convert both
+	// Compare body (normalize for comparison)
+	// Convert parsed markdown to HTML, but canvas.body is already HTML
 	const parsedBodyHtml = markdownToSimpleHtml(parsed.body);
-	const canvasBodyHtml = markdownToSimpleHtml(canvas.body);
-	const match = compareHtmlContent(parsedBodyHtml, canvasBodyHtml);
+	const canvasBodyHtml = canvas.body || '';
+	const parsedNormalized = normalizeHtml(parsedBodyHtml);
+	const canvasNormalized = normalizeHtml(canvasBodyHtml);
+	const match = parsedNormalized === canvasNormalized;
 	if (!match) {
 		log(`      Body changed (normalized comparison failed)`);
-		log(`      Parsed (normalized): "${normalizeHtml(parsedBodyHtml).substring(0, 100)}..."`);
-		log(`      Canvas (normalized): "${normalizeHtml(canvasBodyHtml).substring(0, 100)}..."`);
+		log(`      Parsed body (raw, first 200): "${parsed.body.substring(0, 200)}..."`);
+		log(`      Canvas body (raw, first 200): "${canvasBodyHtml.substring(0, 200)}..."`);
+		log(`      Parsed (normalized, first 200): "${parsedNormalized.substring(0, 200)}..."`);
+		log(`      Canvas (normalized, first 200): "${canvasNormalized.substring(0, 200)}..."`);
+		// Find first difference
+		for (let i = 0; i < Math.min(parsedNormalized.length, canvasNormalized.length); i++) {
+			if (parsedNormalized[i] !== canvasNormalized[i]) {
+				log(`      First difference at position ${i}:`);
+				log(`        Parsed char: "${parsedNormalized[i]}" (code: ${parsedNormalized.charCodeAt(i)})`);
+				log(`        Canvas char: "${canvasNormalized[i]}" (code: ${canvasNormalized.charCodeAt(i)})`);
+				log(`        Context parsed: "...${parsedNormalized.substring(Math.max(0, i-20), i+20)}..."`);
+				log(`        Context canvas: "...${canvasNormalized.substring(Math.max(0, i-20), i+20)}..."`);
+				break;
+			}
+		}
+		if (parsedNormalized.length !== canvasNormalized.length) {
+			log(`      Length difference: parsed=${parsedNormalized.length}, canvas=${canvasNormalized.length}`);
+		}
 		changedFields.push('body');
 	} else {
 		log(`      Body unchanged (normalized comparison passed)`);
@@ -147,11 +165,32 @@ export function compareAssignment(
 		changedFields.push('title');
 	}
 
-	// Compare description (normalize HTML)
-	// Note: Canvas might return markdown OR HTML, so we convert both
+	// Compare description (normalize for comparison)
+	// Convert parsed markdown to HTML, but canvas.description is already HTML
 	const parsedDescHtml = markdownToSimpleHtml(parsed.description);
-	const canvasDescHtml = markdownToSimpleHtml(canvas.description);
-	if (!compareHtmlContent(parsedDescHtml, canvasDescHtml)) {
+	const canvasDescHtml = canvas.description || '';
+	const parsedDescNorm = normalizeHtml(parsedDescHtml);
+	const canvasDescNorm = normalizeHtml(canvasDescHtml);
+	if (parsedDescNorm !== canvasDescNorm) {
+		log(`      Description changed`);
+		log(`      Parsed desc (raw, first 200): "${parsed.description.substring(0, 200)}..."`);
+		log(`      Canvas desc (raw, first 200): "${canvasDescHtml.substring(0, 200)}..."`);
+		log(`      Parsed (normalized, first 200): "${parsedDescNorm.substring(0, 200)}..."`);
+		log(`      Canvas (normalized, first 200): "${canvasDescNorm.substring(0, 200)}..."`);
+		// Find first difference
+		for (let i = 0; i < Math.min(parsedDescNorm.length, canvasDescNorm.length); i++) {
+			if (parsedDescNorm[i] !== canvasDescNorm[i]) {
+				log(`      First difference at position ${i}:`);
+				log(`        Parsed char: "${parsedDescNorm[i]}" (code: ${parsedDescNorm.charCodeAt(i)})`);
+				log(`        Canvas char: "${canvasDescNorm[i]}" (code: ${canvasDescNorm.charCodeAt(i)})`);
+				log(`        Context parsed: "...${parsedDescNorm.substring(Math.max(0, i-20), i+20)}..."`);
+				log(`        Context canvas: "...${canvasDescNorm.substring(Math.max(0, i-20), i+20)}..."`);
+				break;
+			}
+		}
+		if (parsedDescNorm.length !== canvasDescNorm.length) {
+			log(`      Length difference: parsed=${parsedDescNorm.length}, canvas=${canvasDescNorm.length}`);
+		}
 		changedFields.push('description');
 	}
 
@@ -219,10 +258,10 @@ export function compareDiscussion(
 		changedFields.push('title');
 	}
 
-	// Compare message (normalize HTML)
-	// Note: Canvas might return markdown OR HTML, so we convert both
+	// Compare message (normalize for comparison)
+	// Convert parsed markdown to HTML, but canvas.message is already HTML
 	const parsedMsgHtml = markdownToSimpleHtml(parsed.message);
-	const canvasMsgHtml = markdownToSimpleHtml(canvas.message);
+	const canvasMsgHtml = canvas.message || '';
 	const match = compareHtmlContent(parsedMsgHtml, canvasMsgHtml);
 	if (!match) {
 		log(`      Message changed (normalized comparison failed)`);

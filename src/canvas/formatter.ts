@@ -6,7 +6,7 @@ import type {
 	CanvasDiscussion,
 	CanvasFile
 } from './types';
-import { htmlToMarkdown } from '../utils/html-to-markdown';
+import { htmlToMarkdownNested } from '../utils/html-to-markdown';
 
 export class CanvasCourseFormatter {
 	/**
@@ -105,7 +105,7 @@ canvas_url: ${canvasUrl}/courses/${courseId}
 		markdown += `<!-- canvas_module_item_id: ${item.id} -->\n`;
 
 		if (page?.body) {
-			const bodyMarkdown = htmlToMarkdown(page.body);
+			const bodyMarkdown = htmlToMarkdownNested(page.body);
 			if (bodyMarkdown) {
 				markdown += bodyMarkdown + '\n';
 			}
@@ -178,7 +178,7 @@ canvas_url: ${canvasUrl}/courses/${courseId}
 			// Add description if present
 			if (assignment.description) {
 				markdown += '\n---\n';
-				const descriptionMarkdown = htmlToMarkdown(assignment.description);
+				const descriptionMarkdown = htmlToMarkdownNested(assignment.description);
 				if (descriptionMarkdown) {
 					markdown += descriptionMarkdown + '\n';
 				}
@@ -222,7 +222,7 @@ canvas_url: ${canvasUrl}/courses/${courseId}
 			// Add message if present
 			if (discussion.message) {
 				markdown += '\n---\n';
-				const messageMarkdown = htmlToMarkdown(discussion.message);
+				const messageMarkdown = htmlToMarkdownNested(discussion.message);
 				if (messageMarkdown) {
 					markdown += messageMarkdown + '\n';
 				}
