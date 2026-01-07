@@ -3517,7 +3517,6 @@ var CourseUploader = class {
 // src/main.ts
 var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
   async onload() {
-    console.log("Loading canvasLMS-helper");
     await this.loadSettings();
     this.addSettingTab(new SettingsTab(this.app, this));
     this.addCommand({
@@ -3754,13 +3753,9 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
     const uploader = new CourseUploader(
       this.settings.canvasUrl,
       this.settings.canvasToken,
-      frontmatter.canvas_course_id,
-      true
-      // Enable debug mode
+      frontmatter.canvas_course_id
     );
-    const previewNotice = new import_obsidian13.Notice("Analyzing changes... (check console for debug output)", 0);
-    console.log("=== Canvas Upload Debug Output ===");
-    console.log("Check the console for detailed comparison information");
+    const previewNotice = new import_obsidian13.Notice("Analyzing changes...", 0);
     try {
       const preview = await uploader.generatePreview(modules);
       previewNotice.hide();
@@ -3794,7 +3789,6 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
     }
   }
   async onunload() {
-    console.log("Unloading canvasLMS-helper");
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());

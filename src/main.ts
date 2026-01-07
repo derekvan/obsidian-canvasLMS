@@ -22,9 +22,6 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 	settings: typeof DEFAULT_SETTINGS;
 
 	async onload() {
-		// TODO: Remove console.log after testing
-		console.log('Loading canvasLMS-helper');
-
 		await this.loadSettings();
 
 		// Add settings tab
@@ -333,18 +330,15 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 			return;
 		}
 
-		// 6. Create uploader with debug enabled
+		// 6. Create uploader
 		const uploader = new CourseUploader(
 			this.settings.canvasUrl,
 			this.settings.canvasToken,
-			frontmatter.canvas_course_id,
-			true // Enable debug mode
+			frontmatter.canvas_course_id
 		);
 
 		// 7. Show loading notice for preview generation
-		const previewNotice = new Notice('Analyzing changes... (check console for debug output)', 0);
-		console.log('=== Canvas Upload Debug Output ===');
-		console.log('Check the console for detailed comparison information');
+		const previewNotice = new Notice('Analyzing changes...', 0);
 
 		try {
 			// 8. Generate preview (auto dry-run)
@@ -391,8 +385,7 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 	}
 
 	async onunload() {
-		// TODO: Remove console.log after testing
-		console.log('Unloading canvasLMS-helper');
+		// Cleanup handled automatically by Obsidian
 	}
 
 	async loadSettings() {
