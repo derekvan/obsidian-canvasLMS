@@ -1,0 +1,9 @@
+/*
+ * Styles for canvaslms-helper
+ *
+ * Best practices:
+ * - Use Obsidian CSS variables for all styling
+ * - Scope all selectors to plugin containers
+ * - Support both light and dark themes via CSS variables
+ * - Follow Obsidian's 4px spacing grid (var(--size-4-*))
+ */
