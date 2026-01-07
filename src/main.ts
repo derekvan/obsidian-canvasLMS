@@ -9,10 +9,13 @@ import { AssignmentModal } from './modals/assignment-modal';
 import { DiscussionModal } from './modals/discussion-modal';
 import { InternalLinkModal } from './modals/internal-link-modal';
 import { ContentTypeModal } from './modals/content-type-modal';
+import { UploadPreviewModal } from './modals/upload-preview-modal';
 import type { CanvasModule, CanvasModuleItem } from './canvas/types';
 import type { ContentType } from './templates/template-types';
 import { buildModule, buildHeader, buildPage, buildLink, buildFile, buildAssignment, buildDiscussion, buildInternalLink } from './templates/template-builders';
 import { insertAtCursor } from './utils/editor-utils';
+import { MarkdownParser } from './upload/parser';
+import { CourseUploader } from './upload/uploader';
 
 export default class CanvaslmsHelperPlugin extends Plugin {
 	settings: typeof DEFAULT_SETTINGS;
@@ -32,6 +35,14 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 			name: 'Download course',
 			callback: async () => {
 				await this.downloadCourse();
+			}
+		});
+
+		this.addCommand({
+			id: 'upload-course',
+			name: 'Upload to Canvas',
+			callback: async () => {
+				await this.uploadCourse();
 			}
 		});
 
@@ -258,6 +269,98 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 		if (file instanceof TFile) {
 			const leaf = this.app.workspace.getLeaf(false);
 			await leaf.openFile(file);
+		}
+	}
+
+	/**
+	 * Main upload course workflow
+	 */
+	private async uploadCourse(): Promise<void> {
+		// 1. Get active file
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) {
+			new Notice('No active file. Please open a Canvas course file.');
+			return;
+		}
+
+		// 2. Validate settings
+		if (!this.settings.canvasUrl || !this.settings.canvasToken) {
+			new Notice('Please configure Canvas URL and token in settings');
+			return;
+		}
+
+		// 3. Read file content
+		const content = await this.app.vault.read(activeFile);
+
+		// 4. Parse markdown
+		const parser = new MarkdownParser(content);
+		const { frontmatter, modules } = parser.parse();
+
+		// 5. Validate frontmatter
+		if (!frontmatter.canvas_course_id) {
+			new Notice('Error: Missing canvas_course_id in frontmatter');
+			return;
+		}
+
+		if (!frontmatter.canvas_url) {
+			new Notice('Error: Missing canvas_url in frontmatter');
+			return;
+		}
+
+		// 6. Create uploader with debug enabled
+		const uploader = new CourseUploader(
+			this.settings.canvasUrl,
+			this.settings.canvasToken,
+			frontmatter.canvas_course_id,
+			true // Enable debug mode
+		);
+
+		// 7. Show loading notice for preview generation
+		const previewNotice = new Notice('Analyzing changes... (check console for debug output)', 0);
+		console.log('=== Canvas Upload Debug Output ===');
+		console.log('Check the console for detailed comparison information');
+
+		try {
+			// 8. Generate preview (auto dry-run)
+			const preview = await uploader.generatePreview(modules);
+			previewNotice.hide();
+
+			// 9. Show preview modal
+			new UploadPreviewModal(this.app, preview, async () => {
+				// 10. On confirm: upload
+				const uploadNotice = new Notice('Uploading to Canvas...', 0);
+
+				try {
+					const stats = await uploader.upload(modules, false);
+
+					uploadNotice.hide();
+
+					// 11. Show results
+					if (stats.errors.length > 0) {
+						new Notice(
+							`Upload complete with errors: ${stats.itemsCreated} created, ` +
+							`${stats.itemsUpdated} updated, ${stats.itemsSkipped} skipped, ` +
+							`${stats.errors.length} errors (see console)`,
+							10000
+						);
+						console.error('Upload errors:', stats.errors);
+					} else {
+						new Notice(
+							`Upload complete: ${stats.itemsCreated} created, ` +
+							`${stats.itemsUpdated} updated, ${stats.itemsSkipped} skipped`,
+							5000
+						);
+					}
+				} catch (error: any) {
+					uploadNotice.hide();
+					new Notice(`Upload error: ${error.message}`);
+					console.error('Canvas upload error:', error);
+				}
+			}).open();
+		} catch (error: any) {
+			previewNotice.hide();
+			new Notice(`Error generating preview: ${error.message}`);
+			console.error('Canvas preview error:', error);
 		}
 	}
 

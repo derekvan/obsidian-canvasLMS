@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => CanvaslmsHelperPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian10 = require("obsidian");
+var import_obsidian12 = require("obsidian");
 
 // src/settings.ts
 var import_obsidian = require("obsidian");
@@ -1021,8 +1021,8 @@ canvas_url: ${canvasUrl}/courses/${courseId}
   formatLink(item) {
     return `
 ## [link] ${item.title}
-url: ${item.external_url || ""}
 <!-- canvas_module_item_id: ${item.id} -->
+url: ${item.external_url || ""}
 `;
   }
   /**
@@ -1771,6 +1771,125 @@ var ContentTypeModal = class extends import_obsidian9.Modal {
   }
 };
 
+// src/modals/upload-preview-modal.ts
+var import_obsidian10 = require("obsidian");
+var UploadPreviewModal = class extends import_obsidian10.Modal {
+  constructor(app, preview, onConfirm) {
+    super(app);
+    this.preview = preview;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText("Upload preview");
+    contentEl.createEl("p", {
+      text: "Review changes before uploading to Canvas:"
+    });
+    const previewContainer = contentEl.createDiv({ cls: "upload-preview-container" });
+    for (const item of this.preview) {
+      this.renderPreviewItem(previewContainer, item);
+    }
+    const totals = this.calculateTotals();
+    const summary = contentEl.createDiv({ cls: "upload-preview-summary" });
+    summary.createEl("strong", { text: "Summary: " });
+    summary.createEl("span", {
+      text: `${totals.create} to create, ${totals.update} to update, ${totals.skip} unchanged`,
+      cls: "mod-muted"
+    });
+    const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const uploadButton = buttonContainer.createEl("button", {
+      text: "Upload to Canvas",
+      cls: "mod-cta"
+    });
+    uploadButton.addEventListener("click", () => {
+      this.close();
+      this.onConfirm();
+    });
+    const cancelButton = buttonContainer.createEl("button", {
+      text: "Cancel"
+    });
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  /**
+   * Render a single preview item (module)
+   */
+  renderPreviewItem(container, item) {
+    const moduleDiv = container.createDiv({ cls: "upload-preview-module" });
+    const moduleHeader = moduleDiv.createDiv({ cls: "upload-preview-module-header" });
+    moduleHeader.createEl("strong", { text: `[Module] ${item.moduleTitle}` });
+    if (item.modulAction && item.modulAction !== "skip") {
+      const actionBadge = moduleHeader.createEl("span", {
+        cls: `upload-preview-badge upload-preview-badge-${item.modulAction}`
+      });
+      actionBadge.setText(item.modulAction.toUpperCase());
+      if (item.moduleChangedFields && item.moduleChangedFields.length > 0) {
+        moduleHeader.createEl("span", {
+          text: ` (${item.moduleChangedFields.join(", ")})`,
+          cls: "mod-muted"
+        });
+      }
+    }
+    for (const detail of item.items) {
+      this.renderItemDetail(moduleDiv, detail);
+    }
+  }
+  /**
+   * Render a single item detail
+   */
+  renderItemDetail(container, detail) {
+    const itemDiv = container.createDiv({ cls: "upload-preview-item" });
+    const itemLine = itemDiv.createDiv({ cls: "upload-preview-item-line" });
+    itemLine.createEl("span", { text: "  \u2022 ", cls: "upload-preview-bullet" });
+    itemLine.createEl("span", {
+      text: `[${detail.type}] ${detail.title}`,
+      cls: "upload-preview-item-title"
+    });
+    const actionBadge = itemLine.createEl("span", {
+      cls: `upload-preview-badge upload-preview-badge-${detail.action}`
+    });
+    actionBadge.setText(detail.action.toUpperCase());
+    if (detail.changedFields && detail.changedFields.length > 0) {
+      itemLine.createEl("span", {
+        text: ` (${detail.changedFields.join(", ")})`,
+        cls: "mod-muted"
+      });
+    }
+    if (detail.metadata && Object.keys(detail.metadata).length > 0) {
+      const metadataDiv = itemDiv.createDiv({ cls: "upload-preview-metadata" });
+      for (const [key, value] of Object.entries(detail.metadata)) {
+        metadataDiv.createEl("div", {
+          text: `      ${key}: ${value}`,
+          cls: "upload-preview-metadata-line"
+        });
+      }
+    }
+  }
+  /**
+   * Calculate totals for summary
+   */
+  calculateTotals() {
+    let create = 0;
+    let update = 0;
+    let skip = 0;
+    for (const item of this.preview) {
+      if (item.modulAction === "create") create++;
+      else if (item.modulAction === "update") update++;
+      else if (item.modulAction === "skip") skip++;
+      for (const detail of item.items) {
+        if (detail.action === "create") create++;
+        else if (detail.action === "update") update++;
+        else if (detail.action === "skip") skip++;
+      }
+    }
+    return { create, update, skip };
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
 // src/templates/template-builders.ts
 function buildModule(data) {
   return `# ${data.title}
@@ -1870,8 +1989,1338 @@ function insertAtCursor(editor, text) {
   editor.setCursor({ line: newLine, ch: newCh });
 }
 
+// src/upload/parser.ts
+var MarkdownParser = class {
+  constructor(content) {
+    this.currentLine = 0;
+    this.content = content;
+    this.lines = content.split("\n");
+  }
+  /**
+   * Parse the entire markdown file
+   */
+  parse() {
+    const frontmatter = this.parseFrontmatter();
+    const modules = this.parseModules();
+    return { frontmatter, modules };
+  }
+  /**
+   * Parse YAML frontmatter
+   */
+  parseFrontmatter() {
+    var _a;
+    const frontmatter = {};
+    if (((_a = this.lines[this.currentLine]) == null ? void 0 : _a.trim()) === "---") {
+      this.currentLine++;
+      while (this.currentLine < this.lines.length) {
+        const line = this.lines[this.currentLine];
+        if (line.trim() === "---") {
+          this.currentLine++;
+          break;
+        }
+        const match = line.match(/^(\w+):\s*(.+)$/);
+        if (match) {
+          const [, key, value] = match;
+          if (key === "canvas_course_id" || key === "canvas_url") {
+            frontmatter[key] = value.trim();
+          }
+        }
+        this.currentLine++;
+      }
+    }
+    return frontmatter;
+  }
+  /**
+   * Parse all modules
+   */
+  parseModules() {
+    const modules = [];
+    while (this.currentLine < this.lines.length) {
+      const line = this.lines[this.currentLine];
+      if (line.startsWith("# ")) {
+        const module2 = this.parseModule();
+        modules.push(module2);
+      } else {
+        this.currentLine++;
+      }
+    }
+    return modules;
+  }
+  /**
+   * Parse a single module
+   */
+  parseModule() {
+    const titleLine = this.lines[this.currentLine];
+    const title = titleLine.replace(/^#\s+/, "").trim();
+    this.currentLine++;
+    let canvasModuleId;
+    if (this.currentLine < this.lines.length) {
+      const commentMatch = this.lines[this.currentLine].match(/<!--\s*canvas_module_id:\s*(\d+)\s*-->/);
+      if (commentMatch) {
+        canvasModuleId = parseInt(commentMatch[1], 10);
+        this.currentLine++;
+      }
+    }
+    const items = [];
+    while (this.currentLine < this.lines.length) {
+      const line = this.lines[this.currentLine];
+      if (line.startsWith("# ")) {
+        break;
+      }
+      if (line.startsWith("## ")) {
+        const item = this.parseModuleItem();
+        if (item) {
+          items.push(item);
+        }
+      } else {
+        this.currentLine++;
+      }
+    }
+    return { title, canvasModuleId, items };
+  }
+  /**
+   * Parse a single module item
+   */
+  parseModuleItem() {
+    const titleLine = this.lines[this.currentLine];
+    const match = titleLine.match(/^##\s+\[(\w+)\]\s+(.+)$/);
+    if (!match) {
+      this.currentLine++;
+      return null;
+    }
+    const [, type, title] = match;
+    this.currentLine++;
+    switch (type.toLowerCase()) {
+      case "page":
+        return this.parsePage(title);
+      case "assignment":
+        return this.parseAssignment(title);
+      case "discussion":
+        return this.parseDiscussion(title);
+      case "header":
+        return this.parseHeader(title);
+      case "link":
+        return this.parseLink(title);
+      case "file":
+        return this.parseFile(title);
+      default:
+        console.warn(`Unknown item type: ${type}`);
+        return null;
+    }
+  }
+  /**
+   * Parse Canvas IDs and module item ID from comments
+   */
+  parseIds() {
+    const ids = {};
+    while (this.currentLine < this.lines.length) {
+      const line = this.lines[this.currentLine];
+      if (!line.trim().startsWith("<!--")) {
+        break;
+      }
+      const pageIdMatch = line.match(/<!--\s*canvas_page_id:\s*(\S+)\s*-->/);
+      if (pageIdMatch) {
+        ids.canvasId = pageIdMatch[1];
+        this.currentLine++;
+        continue;
+      }
+      const assignmentIdMatch = line.match(/<!--\s*canvas_assignment_id:\s*(\d+)\s*-->/);
+      if (assignmentIdMatch) {
+        ids.canvasId = parseInt(assignmentIdMatch[1], 10);
+        this.currentLine++;
+        continue;
+      }
+      const discussionIdMatch = line.match(/<!--\s*canvas_discussion_id:\s*(\d+)\s*-->/);
+      if (discussionIdMatch) {
+        ids.canvasId = parseInt(discussionIdMatch[1], 10);
+        this.currentLine++;
+        continue;
+      }
+      const fileIdMatch = line.match(/<!--\s*canvas_file_id:\s*(\d+)\s*-->/);
+      if (fileIdMatch) {
+        ids.canvasId = parseInt(fileIdMatch[1], 10);
+        this.currentLine++;
+        continue;
+      }
+      const moduleItemIdMatch = line.match(/<!--\s*canvas_module_item_id:\s*(\d+)\s*-->/);
+      if (moduleItemIdMatch) {
+        ids.moduleItemId = parseInt(moduleItemIdMatch[1], 10);
+        this.currentLine++;
+        continue;
+      }
+      this.currentLine++;
+    }
+    return ids;
+  }
+  /**
+   * Unescape markdown content (handle escaped brackets)
+   */
+  unescapeMarkdown(content) {
+    return content.replace(/\\\[/g, "[").replace(/\\\]/g, "]");
+  }
+  /**
+   * Parse metadata fields and content
+   */
+  parseMetadataAndContent() {
+    const metadata = {};
+    let content = "";
+    let inContent = false;
+    while (this.currentLine < this.lines.length) {
+      const line = this.lines[this.currentLine];
+      if (line.startsWith("# ") || line.startsWith("## ")) {
+        break;
+      }
+      if (line.trim() === "---") {
+        inContent = true;
+        this.currentLine++;
+        continue;
+      }
+      if (inContent) {
+        content += line + "\n";
+      } else {
+        const metaMatch = line.match(/^(\w+):\s*(.+)$/);
+        if (metaMatch) {
+          const [, key, value] = metaMatch;
+          metadata[key] = this.parseMetadataValue(key, value);
+        }
+      }
+      this.currentLine++;
+    }
+    return { metadata, content: this.unescapeMarkdown(content.trim()) };
+  }
+  /**
+   * Parse metadata value (handle different types)
+   */
+  parseMetadataValue(key, value) {
+    if (value === "null") return null;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    if (key === "points" && /^\d+(\.\d+)?$/.test(value)) {
+      return parseFloat(value);
+    }
+    if (key === "due") {
+      return this.parseDate(value);
+    }
+    if (key === "submission_types") {
+      return value.split(",").map((s) => s.trim());
+    }
+    return value;
+  }
+  /**
+   * Parse date from various formats to ISO 8601
+   * Formats: "2026-01-20 11:59pm", "2026-01-20", ISO 8601
+   */
+  parseDate(dateStr) {
+    if (!dateStr) return void 0;
+    try {
+      const timeMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}):(\d{2})(am|pm)$/i);
+      if (timeMatch) {
+        const [, datePart, hourStr, minuteStr, ampm] = timeMatch;
+        let hour = parseInt(hourStr, 10);
+        const minute = parseInt(minuteStr, 10);
+        if (ampm.toLowerCase() === "pm" && hour !== 12) {
+          hour += 12;
+        } else if (ampm.toLowerCase() === "am" && hour === 12) {
+          hour = 0;
+        }
+        const date2 = /* @__PURE__ */ new Date(`${datePart}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`);
+        return date2.toISOString();
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const date2 = /* @__PURE__ */ new Date(`${dateStr}T00:00:00`);
+        return date2.toISOString();
+      }
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString();
+      }
+      console.warn(`Could not parse date: ${dateStr}`);
+      return void 0;
+    } catch (error) {
+      console.warn(`Error parsing date "${dateStr}":`, error);
+      return void 0;
+    }
+  }
+  /**
+   * Parse a page item
+   */
+  parsePage(title) {
+    const ids = this.parseIds();
+    let content = "";
+    while (this.currentLine < this.lines.length) {
+      const line = this.lines[this.currentLine];
+      if (line.startsWith("# ") || line.startsWith("## ")) {
+        break;
+      }
+      content += line + "\n";
+      this.currentLine++;
+    }
+    return {
+      type: "page",
+      title,
+      canvasPageId: ids.canvasId,
+      canvasModuleItemId: ids.moduleItemId,
+      body: this.unescapeMarkdown(content.trim())
+    };
+  }
+  /**
+   * Parse an assignment item
+   */
+  parseAssignment(title) {
+    const ids = this.parseIds();
+    const { metadata, content } = this.parseMetadataAndContent();
+    return {
+      type: "assignment",
+      title,
+      canvasAssignmentId: ids.canvasId,
+      canvasModuleItemId: ids.moduleItemId,
+      description: content,
+      pointsPossible: metadata.points,
+      dueAt: metadata.due,
+      gradingType: metadata.grade_display,
+      submissionTypes: metadata.submission_types
+    };
+  }
+  /**
+   * Parse a discussion item
+   */
+  parseDiscussion(title) {
+    var _a, _b, _c;
+    const ids = this.parseIds();
+    const { metadata, content } = this.parseMetadataAndContent();
+    return {
+      type: "discussion",
+      title,
+      canvasDiscussionId: ids.canvasId,
+      canvasModuleItemId: ids.moduleItemId,
+      message: content,
+      requireInitialPost: (_a = metadata.require_initial_post) != null ? _a : null,
+      threaded: (_b = metadata.threaded) != null ? _b : true,
+      graded: (_c = metadata.graded) != null ? _c : false,
+      pointsPossible: metadata.points,
+      dueAt: metadata.due
+    };
+  }
+  /**
+   * Parse a header item
+   */
+  parseHeader(title) {
+    const ids = this.parseIds();
+    this.parseMetadataAndContent();
+    return {
+      type: "header",
+      title,
+      canvasModuleItemId: ids.moduleItemId
+    };
+  }
+  /**
+   * Parse a link item
+   */
+  parseLink(title) {
+    const ids = this.parseIds();
+    const { metadata } = this.parseMetadataAndContent();
+    return {
+      type: "link",
+      title,
+      canvasModuleItemId: ids.moduleItemId,
+      url: metadata.url || ""
+    };
+  }
+  /**
+   * Parse a file item
+   */
+  parseFile(title) {
+    const ids = this.parseIds();
+    const { metadata } = this.parseMetadataAndContent();
+    return {
+      type: "file",
+      title,
+      canvasFileId: ids.canvasId,
+      canvasModuleItemId: ids.moduleItemId,
+      filename: metadata.filename
+    };
+  }
+};
+
+// src/canvas/api-client-write.ts
+var import_obsidian11 = require("obsidian");
+var CanvasApiClientWrite = class extends CanvasApiClient {
+  constructor(baseUrl, token, courseId) {
+    super(baseUrl, token);
+    this._baseUrl = baseUrl.replace(/\/$/, "");
+    this._token = token;
+    this.courseId = courseId;
+  }
+  /**
+   * Make a generic POST/PUT request to Canvas
+   */
+  async writeRequest(endpoint, method, params) {
+    var _a;
+    const url = `${this._baseUrl}${endpoint}`;
+    const formData = new URLSearchParams();
+    this.buildFormData(formData, params);
+    try {
+      const response = await (0, import_obsidian11.requestUrl)({
+        url,
+        method,
+        headers: {
+          "Authorization": `Bearer ${this._token}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json"
+        },
+        body: formData.toString()
+      });
+      if (response.status === 200 || response.status === 201) {
+        return response.json;
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.text}`);
+      }
+    } catch (error) {
+      if (error.status === 401) {
+        throw new Error("Invalid Canvas token. Please check your settings.");
+      } else if (error.status === 403) {
+        throw new Error("Access denied. You may not have permission to modify this course.");
+      } else if (error.status === 404) {
+        throw new Error("Resource not found. The Canvas ID may be stale.");
+      } else if (error.status === 422) {
+        throw new Error(`Validation error: ${error.text || "Invalid data"}`);
+      } else if ((_a = error.message) == null ? void 0 : _a.includes("net::")) {
+        throw new Error("Cannot connect to Canvas. Check your internet connection.");
+      } else {
+        throw error;
+      }
+    }
+  }
+  /**
+   * Build form data from params object
+   * Handles nested objects and arrays for Canvas API
+   */
+  buildFormData(formData, params, prefix = "") {
+    for (const [key, value] of Object.entries(params)) {
+      if (value === void 0 || value === null) {
+        continue;
+      }
+      const formKey = prefix ? `${prefix}[${key}]` : key;
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          formData.append(`${formKey}[]`, String(item));
+        });
+      } else if (typeof value === "object") {
+        this.buildFormData(formData, value, formKey);
+      } else {
+        formData.append(formKey, String(value));
+      }
+    }
+  }
+  /**
+   * MODULE OPERATIONS
+   */
+  async createModule(params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/modules`,
+      "POST",
+      { module: params }
+    );
+  }
+  async updateModule(moduleId, params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/modules/${moduleId}`,
+      "PUT",
+      { module: params }
+    );
+  }
+  /**
+   * PAGE OPERATIONS
+   */
+  async createPage(params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/pages`,
+      "POST",
+      { wiki_page: params }
+    );
+  }
+  async updatePage(pageUrl, params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/pages/${pageUrl}`,
+      "PUT",
+      { wiki_page: params }
+    );
+  }
+  /**
+   * ASSIGNMENT OPERATIONS
+   */
+  async createAssignment(params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/assignments`,
+      "POST",
+      { assignment: params }
+    );
+  }
+  async updateAssignment(assignmentId, params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/assignments/${assignmentId}`,
+      "PUT",
+      { assignment: params }
+    );
+  }
+  /**
+   * DISCUSSION OPERATIONS
+   */
+  async createDiscussion(params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/discussion_topics`,
+      "POST",
+      params
+    );
+  }
+  async updateDiscussion(topicId, params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/discussion_topics/${topicId}`,
+      "PUT",
+      params
+    );
+  }
+  /**
+   * MODULE ITEM OPERATIONS
+   */
+  async createModuleItem(moduleId, params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/modules/${moduleId}/items`,
+      "POST",
+      { module_item: params }
+    );
+  }
+  async updateModuleItem(moduleId, itemId, params) {
+    return await this.writeRequest(
+      `/api/v1/courses/${this.courseId}/modules/${moduleId}/items/${itemId}`,
+      "PUT",
+      { module_item: params }
+    );
+  }
+};
+
+// src/upload/link-resolver.ts
+var LinkResolver = class {
+  constructor() {
+    this.registry = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Register a content item with its Canvas URL
+   */
+  register(type, title, canvasUrl) {
+    const key = this.makeKey(type, title);
+    this.registry.set(key, canvasUrl);
+  }
+  /**
+   * Resolve [[Type:Title]] links in content to Canvas URLs
+   */
+  resolve(content) {
+    if (!content) {
+      return { resolved: content, hasLinks: false };
+    }
+    let hasLinks = false;
+    let resolved = content;
+    const linkPattern = /\[\[(\w+):([^\]]+)\]\]/g;
+    resolved = content.replace(linkPattern, (match, type, title) => {
+      const key = this.makeKey(type, title);
+      const url = this.registry.get(key);
+      if (url) {
+        hasLinks = true;
+        return `<a href="${url}">${title.trim()}</a>`;
+      } else {
+        console.warn(`Link not found: ${match}`);
+        return title.trim();
+      }
+    });
+    return { resolved, hasLinks };
+  }
+  /**
+   * Check if content has internal links
+   */
+  hasInternalLinks(content) {
+    if (!content) return false;
+    return /\[\[(\w+):([^\]]+)\]\]/.test(content);
+  }
+  /**
+   * Make registry key from type and title (normalized)
+   */
+  makeKey(type, title) {
+    return `${type.toLowerCase()}:${title.trim().toLowerCase()}`;
+  }
+  /**
+   * Clear the registry
+   */
+  clear() {
+    this.registry.clear();
+  }
+  /**
+   * Get all registered items (for debugging)
+   */
+  getRegistry() {
+    return new Map(this.registry);
+  }
+};
+
+// src/canvas/html-normalizer.ts
+function decodeHtmlEntities(text) {
+  const entities = {
+    "&nbsp;": " ",
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&apos;": "'",
+    "&ndash;": "\u2013",
+    "&mdash;": "\u2014"
+  };
+  let decoded = text;
+  for (const [entity, char] of Object.entries(entities)) {
+    decoded = decoded.replace(new RegExp(entity, "g"), char);
+  }
+  decoded = decoded.replace(/&#(\d+);/g, (_, num) => {
+    return String.fromCharCode(parseInt(num, 10));
+  });
+  decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+  return decoded;
+}
+function stripHtmlTags(html) {
+  return html.replace(/<[^>]+>/g, "");
+}
+function normalizeWhitespace(text) {
+  return text.replace(/\s+/g, " ").trim();
+}
+function normalizeHtml(content) {
+  if (!content) return "";
+  let normalized = content;
+  normalized = decodeHtmlEntities(normalized);
+  normalized = stripHtmlTags(normalized);
+  normalized = normalizeWhitespace(normalized);
+  normalized = normalized.toLowerCase();
+  return normalized;
+}
+function compareHtmlContent(content1, content2) {
+  const normalized1 = normalizeHtml(content1);
+  const normalized2 = normalizeHtml(content2);
+  return normalized1 === normalized2;
+}
+function markdownToSimpleHtml(markdown) {
+  if (!markdown) return "";
+  let html = markdown;
+  html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
+  html = html.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+  html = html.replace(/^\s*-\s+(.+)$/gm, "<li>$1</li>");
+  html = html.replace(/^\s*\*\s+(.+)$/gm, "<li>$1</li>");
+  html = html.replace(/(<li>.*<\/li>\s*)+/gs, "<ul>$&</ul>");
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/__(.+?)__/g, "<strong>$1</strong>");
+  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+  html = html.replace(/_(.+?)_/g, "<em>$1</em>");
+  html = html.replace(/`(.+?)`/g, "<code>$1</code>");
+  const blocks = html.split(/\n\s*\n/);
+  html = blocks.map((block) => {
+    const trimmed = block.trim();
+    if (!trimmed) return "";
+    if (trimmed.match(/^<(h[1-6]|ul|ol|li|div|p|blockquote)/)) {
+      return trimmed;
+    }
+    return `<p>${trimmed}</p>`;
+  }).filter((b) => b).join("\n");
+  html = html.replace(/\n/g, "<br>\n");
+  return html;
+}
+
+// src/upload/comparator.ts
+var debugMode = false;
+function setComparatorDebug(enabled) {
+  debugMode = enabled;
+}
+function log(...args) {
+  if (debugMode) {
+    console.log("[Comparator]", ...args);
+  }
+}
+function compareModule(parsed, canvas) {
+  if (!canvas) {
+    return {
+      hasChanges: true,
+      changedFields: [],
+      action: "create"
+    };
+  }
+  const changedFields = [];
+  if (parsed.title !== canvas.name) {
+    changedFields.push("title");
+  }
+  if (changedFields.length > 0) {
+    return {
+      hasChanges: true,
+      changedFields,
+      action: "update"
+    };
+  }
+  return {
+    hasChanges: false,
+    changedFields: [],
+    action: "skip"
+  };
+}
+function comparePage(parsed, canvas) {
+  log(`      Comparing page: "${parsed.title}"`);
+  if (!canvas) {
+    log(`      No Canvas data found - marking as CREATE`);
+    return {
+      hasChanges: true,
+      changedFields: [],
+      action: "create"
+    };
+  }
+  const changedFields = [];
+  if (parsed.title !== canvas.title) {
+    log(`      Title changed: "${parsed.title}" !== "${canvas.title}"`);
+    changedFields.push("title");
+  }
+  const parsedBodyHtml = markdownToSimpleHtml(parsed.body);
+  const canvasBodyHtml = markdownToSimpleHtml(canvas.body);
+  const match = compareHtmlContent(parsedBodyHtml, canvasBodyHtml);
+  if (!match) {
+    log(`      Body changed (normalized comparison failed)`);
+    log(`      Parsed (normalized): "${normalizeHtml(parsedBodyHtml).substring(0, 100)}..."`);
+    log(`      Canvas (normalized): "${normalizeHtml(canvasBodyHtml).substring(0, 100)}..."`);
+    changedFields.push("body");
+  } else {
+    log(`      Body unchanged (normalized comparison passed)`);
+  }
+  if (changedFields.length > 0) {
+    log(`      Result: UPDATE - Changed fields: [${changedFields.join(", ")}]`);
+    return {
+      hasChanges: true,
+      changedFields,
+      action: "update"
+    };
+  }
+  log(`      Result: SKIP - No changes detected`);
+  return {
+    hasChanges: false,
+    changedFields: [],
+    action: "skip"
+  };
+}
+function compareAssignment(parsed, canvas) {
+  var _a, _b;
+  if (!canvas) {
+    return {
+      hasChanges: true,
+      changedFields: [],
+      action: "create"
+    };
+  }
+  const changedFields = [];
+  if (parsed.title !== canvas.name) {
+    changedFields.push("title");
+  }
+  const parsedDescHtml = markdownToSimpleHtml(parsed.description);
+  const canvasDescHtml = markdownToSimpleHtml(canvas.description);
+  if (!compareHtmlContent(parsedDescHtml, canvasDescHtml)) {
+    changedFields.push("description");
+  }
+  const parsedPoints = (_a = parsed.pointsPossible) != null ? _a : null;
+  const canvasPoints = (_b = canvas.points_possible) != null ? _b : null;
+  if (parsedPoints !== canvasPoints) {
+    changedFields.push("points_possible");
+  }
+  const parsedDue = parsed.dueAt ? new Date(parsed.dueAt).toISOString() : null;
+  const canvasDue = canvas.due_at ? new Date(canvas.due_at).toISOString() : null;
+  if (parsedDue !== canvasDue) {
+    changedFields.push("due_at");
+  }
+  if (parsed.gradingType && parsed.gradingType !== canvas.grading_type) {
+    changedFields.push("grading_type");
+  }
+  if (changedFields.length > 0) {
+    return {
+      hasChanges: true,
+      changedFields,
+      action: "update"
+    };
+  }
+  return {
+    hasChanges: false,
+    changedFields: [],
+    action: "skip"
+  };
+}
+function compareDiscussion(parsed, canvas) {
+  log(`      Comparing discussion: "${parsed.title}"`);
+  if (!canvas) {
+    log(`      No Canvas data found - marking as CREATE`);
+    return {
+      hasChanges: true,
+      changedFields: [],
+      action: "create"
+    };
+  }
+  const changedFields = [];
+  if (parsed.title !== canvas.title) {
+    log(`      Title changed: "${parsed.title}" !== "${canvas.title}"`);
+    changedFields.push("title");
+  }
+  const parsedMsgHtml = markdownToSimpleHtml(parsed.message);
+  const canvasMsgHtml = markdownToSimpleHtml(canvas.message);
+  const match = compareHtmlContent(parsedMsgHtml, canvasMsgHtml);
+  if (!match) {
+    log(`      Message changed (normalized comparison failed)`);
+    log(`      Parsed (normalized): "${normalizeHtml(parsedMsgHtml).substring(0, 100)}..."`);
+    log(`      Canvas (normalized): "${normalizeHtml(canvasMsgHtml).substring(0, 100)}..."`);
+    changedFields.push("message");
+  }
+  if (parsed.requireInitialPost !== canvas.require_initial_post) {
+    log(`      require_initial_post changed: ${parsed.requireInitialPost} !== ${canvas.require_initial_post}`);
+    changedFields.push("require_initial_post");
+  }
+  const canvasThreaded = canvas.discussion_type === "threaded";
+  if (parsed.threaded !== canvasThreaded) {
+    log(`      threaded changed: ${parsed.threaded} !== ${canvasThreaded}`);
+    changedFields.push("threaded");
+  }
+  const canvasGraded = canvas.assignment !== void 0;
+  if (parsed.graded !== canvasGraded) {
+    log(`      graded changed: ${parsed.graded} !== ${canvasGraded}`);
+    changedFields.push("graded");
+  }
+  if (parsed.graded && canvas.assignment) {
+    if (parsed.pointsPossible !== canvas.assignment.points_possible) {
+      log(`      points changed: ${parsed.pointsPossible} !== ${canvas.assignment.points_possible}`);
+      changedFields.push("points");
+    }
+    const parsedDue = parsed.dueAt ? new Date(parsed.dueAt).toISOString() : null;
+    const canvasDue = canvas.assignment.due_at ? new Date(canvas.assignment.due_at).toISOString() : null;
+    if (parsedDue !== canvasDue) {
+      log(`      due_at changed: ${parsedDue} !== ${canvasDue}`);
+      changedFields.push("due_at");
+    }
+  }
+  if (changedFields.length > 0) {
+    log(`      Result: UPDATE - Changed fields: [${changedFields.join(", ")}]`);
+    return {
+      hasChanges: true,
+      changedFields,
+      action: "update"
+    };
+  }
+  log(`      Result: SKIP - No changes detected`);
+  return {
+    hasChanges: false,
+    changedFields: [],
+    action: "skip"
+  };
+}
+
+// src/upload/uploader.ts
+var CourseUploader = class {
+  constructor(baseUrl, token, courseId, debug = false) {
+    this.debug = false;
+    this.apiClient = new CanvasApiClient(baseUrl, token);
+    this.apiClientWrite = new CanvasApiClientWrite(baseUrl, token, courseId);
+    this.linkResolver = new LinkResolver();
+    this.courseId = courseId;
+    this.debug = debug;
+  }
+  /**
+   * Enable debug logging
+   */
+  setDebug(enabled) {
+    this.debug = enabled;
+    setComparatorDebug(enabled);
+  }
+  log(...args) {
+    if (this.debug) {
+      console.log("[CourseUploader]", ...args);
+    }
+  }
+  /**
+   * Generate preview of changes (dry-run)
+   */
+  async generatePreview(modules) {
+    const preview = [];
+    this.log("=== STARTING PREVIEW GENERATION ===");
+    this.log(`Total modules to process: ${modules.length}`);
+    const canvasData = await this.fetchCanvasData(modules);
+    this.log(`Fetched Canvas data entries: ${canvasData.size}`);
+    for (const module2 of modules) {
+      this.log(`
+--- Processing module: "${module2.title}" ---`);
+      this.log(`Module Canvas ID: ${module2.canvasModuleId || "NONE (will create)"}`);
+      const previewItem = await this.generateModulePreview(module2, canvasData);
+      preview.push(previewItem);
+    }
+    this.log("\n=== PREVIEW GENERATION COMPLETE ===");
+    return preview;
+  }
+  /**
+   * Generate preview for a single module
+   */
+  async generateModulePreview(module2, canvasData) {
+    const canvasModule = module2.canvasModuleId ? canvasData.get(`module_${module2.canvasModuleId}`) : void 0;
+    const moduleComparison = compareModule(module2, canvasModule);
+    const itemPreviews = [];
+    for (const item of module2.items) {
+      const itemPreview = await this.generateItemPreview(item, canvasData);
+      itemPreviews.push(itemPreview);
+    }
+    return {
+      moduleTitle: module2.title,
+      modulAction: moduleComparison.action,
+      moduleChangedFields: moduleComparison.changedFields,
+      items: itemPreviews
+    };
+  }
+  /**
+   * Generate preview for a single item
+   */
+  async generateItemPreview(item, canvasData) {
+    var _a, _b, _c, _d, _e, _f;
+    let comparison;
+    let metadata = {};
+    this.log(`  Processing item [${item.type}]: "${item.title}"`);
+    switch (item.type) {
+      case "page": {
+        const page = item;
+        this.log(`    Canvas Page ID: ${page.canvasPageId || "NONE"}`);
+        const canvasPage = page.canvasPageId ? canvasData.get(`page_${page.canvasPageId}`) : void 0;
+        this.log(`    Canvas data found: ${!!canvasPage}`);
+        if (canvasPage) {
+          this.log(`    Canvas title: "${canvasPage.title}"`);
+          this.log(`    Parsed title: "${page.title}"`);
+          this.log(`    Canvas body length: ${((_a = canvasPage.body) == null ? void 0 : _a.length) || 0}`);
+          this.log(`    Parsed body length: ${((_b = page.body) == null ? void 0 : _b.length) || 0}`);
+        }
+        comparison = comparePage(page, canvasPage);
+        this.log(`    Action: ${comparison.action}, Changed fields: [${comparison.changedFields.join(", ")}]`);
+        break;
+      }
+      case "assignment": {
+        const assignment = item;
+        this.log(`    Canvas Assignment ID: ${assignment.canvasAssignmentId || "NONE"}`);
+        const canvasAssignment = assignment.canvasAssignmentId ? canvasData.get(`assignment_${assignment.canvasAssignmentId}`) : void 0;
+        this.log(`    Canvas data found: ${!!canvasAssignment}`);
+        if (canvasAssignment) {
+          this.log(`    Canvas name: "${canvasAssignment.name}"`);
+          this.log(`    Parsed title: "${assignment.title}"`);
+          this.log(`    Canvas description length: ${((_c = canvasAssignment.description) == null ? void 0 : _c.length) || 0}`);
+          this.log(`    Parsed description length: ${((_d = assignment.description) == null ? void 0 : _d.length) || 0}`);
+          this.log(`    Canvas points: ${canvasAssignment.points_possible}`);
+          this.log(`    Parsed points: ${assignment.pointsPossible}`);
+        }
+        comparison = compareAssignment(assignment, canvasAssignment);
+        this.log(`    Action: ${comparison.action}, Changed fields: [${comparison.changedFields.join(", ")}]`);
+        if (assignment.pointsPossible !== void 0) {
+          metadata.points = assignment.pointsPossible;
+        }
+        if (assignment.dueAt) {
+          metadata.due = assignment.dueAt;
+        }
+        if (assignment.gradingType) {
+          metadata.grading_type = assignment.gradingType;
+        }
+        break;
+      }
+      case "discussion": {
+        const discussion = item;
+        this.log(`    Canvas Discussion ID: ${discussion.canvasDiscussionId || "NONE"}`);
+        const canvasDiscussion = discussion.canvasDiscussionId ? canvasData.get(`discussion_${discussion.canvasDiscussionId}`) : void 0;
+        this.log(`    Canvas data found: ${!!canvasDiscussion}`);
+        if (canvasDiscussion) {
+          this.log(`    Canvas title: "${canvasDiscussion.title}"`);
+          this.log(`    Parsed title: "${discussion.title}"`);
+          this.log(`    Canvas message length: ${((_e = canvasDiscussion.message) == null ? void 0 : _e.length) || 0}`);
+          this.log(`    Parsed message length: ${((_f = discussion.message) == null ? void 0 : _f.length) || 0}`);
+          this.log(`    Canvas require_initial_post: ${canvasDiscussion.require_initial_post}`);
+          this.log(`    Parsed require_initial_post: ${discussion.requireInitialPost}`);
+          this.log(`    Canvas threaded: ${canvasDiscussion.discussion_type === "threaded"}`);
+          this.log(`    Parsed threaded: ${discussion.threaded}`);
+          this.log(`    Canvas graded: ${canvasDiscussion.assignment !== void 0}`);
+          this.log(`    Parsed graded: ${discussion.graded}`);
+        }
+        comparison = compareDiscussion(discussion, canvasDiscussion);
+        this.log(`    Action: ${comparison.action}, Changed fields: [${comparison.changedFields.join(", ")}]`);
+        metadata.require_initial_post = discussion.requireInitialPost;
+        if (discussion.graded && discussion.pointsPossible !== void 0) {
+          metadata.points = discussion.pointsPossible;
+        }
+        break;
+      }
+      case "header":
+      case "link":
+      case "file":
+        this.log(`    Canvas Module Item ID: ${item.canvasModuleItemId || "NONE"}`);
+        comparison = {
+          hasChanges: item.canvasModuleItemId === void 0,
+          changedFields: [],
+          action: item.canvasModuleItemId === void 0 ? "create" : "skip"
+        };
+        this.log(`    Action: ${comparison.action}`);
+        break;
+    }
+    return {
+      type: item.type,
+      title: item.title,
+      action: comparison.action,
+      changedFields: comparison.changedFields,
+      metadata: Object.keys(metadata).length > 0 ? metadata : void 0
+    };
+  }
+  /**
+   * Upload course content (three-phase workflow)
+   */
+  async upload(modules, dryRun = false) {
+    const stats = {
+      itemsCreated: 0,
+      itemsUpdated: 0,
+      itemsSkipped: 0,
+      errors: []
+    };
+    if (dryRun) {
+      return stats;
+    }
+    this.linkResolver.clear();
+    const canvasData = await this.fetchCanvasData(modules);
+    const itemsNeedingLinks = [];
+    for (const module2 of modules) {
+      await this.uploadModule(module2, canvasData, stats, itemsNeedingLinks);
+    }
+    await this.resolveLinks(itemsNeedingLinks, stats);
+    await this.updateModulePositions(modules, stats);
+    return stats;
+  }
+  /**
+   * Fetch existing Canvas data for comparison
+   */
+  async fetchCanvasData(modules) {
+    const data = /* @__PURE__ */ new Map();
+    try {
+      const canvasModules = await this.apiClient.getModules(this.courseId);
+      for (const module2 of canvasModules) {
+        data.set(`module_${module2.id}`, module2);
+      }
+      for (const module2 of modules) {
+        for (const item of module2.items) {
+          try {
+            if (item.type === "page" && item.canvasPageId) {
+              const page = await this.apiClient.getPage(this.courseId, item.canvasPageId);
+              data.set(`page_${page.url}`, page);
+            } else if (item.type === "assignment" && item.canvasAssignmentId) {
+              const assignment = await this.apiClient.getAssignment(
+                this.courseId,
+                String(item.canvasAssignmentId)
+              );
+              data.set(`assignment_${assignment.id}`, assignment);
+            } else if (item.type === "discussion" && item.canvasDiscussionId) {
+              const discussion = await this.apiClient.getDiscussion(
+                this.courseId,
+                String(item.canvasDiscussionId)
+              );
+              data.set(`discussion_${discussion.id}`, discussion);
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch Canvas data for item: ${item.title}`, error);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to fetch Canvas data, proceeding with upload", error);
+    }
+    return data;
+  }
+  /**
+   * Upload a single module and its items
+   */
+  async uploadModule(module2, canvasData, stats, itemsNeedingLinks) {
+    let moduleId = module2.canvasModuleId;
+    try {
+      const canvasModule = moduleId ? canvasData.get(`module_${moduleId}`) : void 0;
+      const moduleComparison = compareModule(module2, canvasModule);
+      if (moduleComparison.action === "create") {
+        const created = await this.apiClientWrite.createModule({ name: module2.title });
+        moduleId = created.id;
+        stats.itemsCreated++;
+      } else if (moduleComparison.action === "update") {
+        await this.apiClientWrite.updateModule(moduleId, { name: module2.title });
+        stats.itemsUpdated++;
+      } else {
+        stats.itemsSkipped++;
+      }
+      for (const item of module2.items) {
+        await this.uploadItem(item, moduleId, canvasData, stats, itemsNeedingLinks);
+      }
+    } catch (error) {
+      stats.errors.push({
+        itemType: "module",
+        itemTitle: module2.title,
+        error: error.message || String(error)
+      });
+    }
+    return moduleId;
+  }
+  /**
+   * Upload a single item
+   */
+  async uploadItem(item, moduleId, canvasData, stats, itemsNeedingLinks) {
+    try {
+      switch (item.type) {
+        case "page":
+          await this.uploadPage(item, moduleId, canvasData, stats, itemsNeedingLinks);
+          break;
+        case "assignment":
+          await this.uploadAssignment(item, moduleId, canvasData, stats, itemsNeedingLinks);
+          break;
+        case "discussion":
+          await this.uploadDiscussion(item, moduleId, canvasData, stats, itemsNeedingLinks);
+          break;
+        case "header":
+          await this.uploadHeader(item, moduleId, stats);
+          break;
+        case "link":
+          await this.uploadLink(item, moduleId, stats);
+          break;
+        case "file":
+          stats.itemsSkipped++;
+          break;
+      }
+    } catch (error) {
+      stats.errors.push({
+        itemType: item.type,
+        itemTitle: item.title,
+        error: error.message || String(error)
+      });
+    }
+  }
+  /**
+   * Upload a page
+   */
+  async uploadPage(page, moduleId, canvasData, stats, itemsNeedingLinks) {
+    const canvasPage = page.canvasPageId ? canvasData.get(`page_${page.canvasPageId}`) : void 0;
+    const comparison = comparePage(page, canvasPage);
+    if (comparison.action === "create") {
+      const created = await this.apiClientWrite.createPage({
+        title: page.title,
+        body: markdownToSimpleHtml(page.body),
+        published: true
+      });
+      stats.itemsCreated++;
+      const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/pages/${created.url}`;
+      this.linkResolver.register("page", page.title, url);
+      if (this.linkResolver.hasInternalLinks(page.body)) {
+        itemsNeedingLinks.push({ type: "page", id: created.url, content: page.body });
+      }
+      if (!page.canvasModuleItemId) {
+        await this.apiClientWrite.createModuleItem(moduleId, {
+          title: page.title,
+          type: "Page",
+          page_url: created.url
+        });
+      }
+    } else if (comparison.action === "update") {
+      await this.apiClientWrite.updatePage(page.canvasPageId, {
+        title: page.title,
+        body: markdownToSimpleHtml(page.body)
+      });
+      stats.itemsUpdated++;
+      const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/pages/${page.canvasPageId}`;
+      this.linkResolver.register("page", page.title, url);
+      if (this.linkResolver.hasInternalLinks(page.body)) {
+        itemsNeedingLinks.push({ type: "page", id: page.canvasPageId, content: page.body });
+      }
+    } else {
+      stats.itemsSkipped++;
+      if (page.canvasPageId) {
+        const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/pages/${page.canvasPageId}`;
+        this.linkResolver.register("page", page.title, url);
+      }
+    }
+  }
+  /**
+   * Upload an assignment
+   */
+  async uploadAssignment(assignment, moduleId, canvasData, stats, itemsNeedingLinks) {
+    const canvasAssignment = assignment.canvasAssignmentId ? canvasData.get(`assignment_${assignment.canvasAssignmentId}`) : void 0;
+    const comparison = compareAssignment(assignment, canvasAssignment);
+    if (comparison.action === "create") {
+      const created = await this.apiClientWrite.createAssignment({
+        name: assignment.title,
+        description: markdownToSimpleHtml(assignment.description),
+        points_possible: assignment.pointsPossible,
+        due_at: assignment.dueAt,
+        grading_type: assignment.gradingType,
+        submission_types: assignment.submissionTypes,
+        published: true
+      });
+      stats.itemsCreated++;
+      const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/assignments/${created.id}`;
+      this.linkResolver.register("assignment", assignment.title, url);
+      if (this.linkResolver.hasInternalLinks(assignment.description)) {
+        itemsNeedingLinks.push({ type: "assignment", id: created.id, content: assignment.description });
+      }
+      if (!assignment.canvasModuleItemId) {
+        await this.apiClientWrite.createModuleItem(moduleId, {
+          title: assignment.title,
+          type: "Assignment",
+          content_id: created.id
+        });
+      }
+    } else if (comparison.action === "update") {
+      await this.apiClientWrite.updateAssignment(assignment.canvasAssignmentId, {
+        name: assignment.title,
+        description: markdownToSimpleHtml(assignment.description),
+        points_possible: assignment.pointsPossible,
+        due_at: assignment.dueAt,
+        grading_type: assignment.gradingType
+        // Note: Cannot update submission_types (Canvas limitation)
+      });
+      stats.itemsUpdated++;
+      const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/assignments/${assignment.canvasAssignmentId}`;
+      this.linkResolver.register("assignment", assignment.title, url);
+      if (this.linkResolver.hasInternalLinks(assignment.description)) {
+        itemsNeedingLinks.push({ type: "assignment", id: assignment.canvasAssignmentId, content: assignment.description });
+      }
+    } else {
+      stats.itemsSkipped++;
+      if (assignment.canvasAssignmentId) {
+        const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/assignments/${assignment.canvasAssignmentId}`;
+        this.linkResolver.register("assignment", assignment.title, url);
+      }
+    }
+  }
+  /**
+   * Upload a discussion
+   */
+  async uploadDiscussion(discussion, moduleId, canvasData, stats, itemsNeedingLinks) {
+    const canvasDiscussion = discussion.canvasDiscussionId ? canvasData.get(`discussion_${discussion.canvasDiscussionId}`) : void 0;
+    const comparison = compareDiscussion(discussion, canvasDiscussion);
+    if (comparison.action === "create") {
+      const params = {
+        title: discussion.title,
+        message: markdownToSimpleHtml(discussion.message),
+        discussion_type: discussion.threaded ? "threaded" : "side_comment",
+        require_initial_post: discussion.requireInitialPost,
+        published: true
+      };
+      if (discussion.graded && discussion.pointsPossible !== void 0) {
+        params.assignment = {
+          points_possible: discussion.pointsPossible,
+          due_at: discussion.dueAt
+        };
+      }
+      const created = await this.apiClientWrite.createDiscussion(params);
+      stats.itemsCreated++;
+      const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/discussion_topics/${created.id}`;
+      this.linkResolver.register("discussion", discussion.title, url);
+      if (this.linkResolver.hasInternalLinks(discussion.message)) {
+        itemsNeedingLinks.push({ type: "discussion", id: created.id, content: discussion.message });
+      }
+      if (!discussion.canvasModuleItemId) {
+        await this.apiClientWrite.createModuleItem(moduleId, {
+          title: discussion.title,
+          type: "Discussion",
+          content_id: created.id
+        });
+      }
+    } else if (comparison.action === "update") {
+      const params = {
+        title: discussion.title,
+        message: markdownToSimpleHtml(discussion.message),
+        discussion_type: discussion.threaded ? "threaded" : "side_comment",
+        require_initial_post: discussion.requireInitialPost
+      };
+      if (discussion.graded && discussion.pointsPossible !== void 0) {
+        params.assignment = {
+          points_possible: discussion.pointsPossible,
+          due_at: discussion.dueAt
+        };
+      }
+      await this.apiClientWrite.updateDiscussion(discussion.canvasDiscussionId, params);
+      stats.itemsUpdated++;
+      const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/discussion_topics/${discussion.canvasDiscussionId}`;
+      this.linkResolver.register("discussion", discussion.title, url);
+      if (this.linkResolver.hasInternalLinks(discussion.message)) {
+        itemsNeedingLinks.push({ type: "discussion", id: discussion.canvasDiscussionId, content: discussion.message });
+      }
+    } else {
+      stats.itemsSkipped++;
+      if (discussion.canvasDiscussionId) {
+        const url = `${this.apiClientWrite["_baseUrl"]}/courses/${this.courseId}/discussion_topics/${discussion.canvasDiscussionId}`;
+        this.linkResolver.register("discussion", discussion.title, url);
+      }
+    }
+  }
+  /**
+   * Upload a header (SubHeader)
+   */
+  async uploadHeader(header, moduleId, stats) {
+    if (!header.canvasModuleItemId) {
+      await this.apiClientWrite.createModuleItem(moduleId, {
+        title: header.title,
+        type: "SubHeader"
+      });
+      stats.itemsCreated++;
+    } else {
+      stats.itemsSkipped++;
+    }
+  }
+  /**
+   * Upload a link (ExternalUrl)
+   */
+  async uploadLink(link, moduleId, stats) {
+    if (!link.canvasModuleItemId) {
+      await this.apiClientWrite.createModuleItem(moduleId, {
+        title: link.title,
+        type: "ExternalUrl",
+        external_url: link.url
+      });
+      stats.itemsCreated++;
+    } else {
+      stats.itemsSkipped++;
+    }
+  }
+  /**
+   * Phase 2: Resolve internal links
+   */
+  async resolveLinks(items, stats) {
+    for (const item of items) {
+      try {
+        const { resolved, hasLinks } = this.linkResolver.resolve(item.content);
+        if (hasLinks) {
+          if (item.type === "page") {
+            await this.apiClientWrite.updatePage(item.id, { body: resolved });
+          } else if (item.type === "assignment") {
+            await this.apiClientWrite.updateAssignment(item.id, { description: resolved });
+          } else if (item.type === "discussion") {
+            await this.apiClientWrite.updateDiscussion(item.id, { message: resolved });
+          }
+        }
+      } catch (error) {
+        stats.errors.push({
+          itemType: item.type,
+          itemTitle: `Link resolution for ${item.type} ${item.id}`,
+          error: error.message || String(error)
+        });
+      }
+    }
+  }
+  /**
+   * Phase 3: Update module positions (placeholder)
+   */
+  async updateModulePositions(modules, stats) {
+  }
+};
+
 // src/main.ts
-var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
+var CanvaslmsHelperPlugin = class extends import_obsidian12.Plugin {
   async onload() {
     console.log("Loading canvasLMS-helper");
     await this.loadSettings();
@@ -1881,6 +3330,13 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       name: "Download course",
       callback: async () => {
         await this.downloadCourse();
+      }
+    });
+    this.addCommand({
+      id: "upload-course",
+      name: "Upload to Canvas",
+      callback: async () => {
+        await this.uploadCourse();
       }
     });
     this.addCommand({
@@ -1952,12 +3408,12 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
    */
   async downloadCourse() {
     if (!this.settings.canvasUrl || !this.settings.canvasToken) {
-      new import_obsidian10.Notice("Please configure Canvas URL and token in settings");
+      new import_obsidian12.Notice("Please configure Canvas URL and token in settings");
       return;
     }
     const courseId = await this.promptForCourseId();
     if (!courseId) return;
-    const notice = new import_obsidian10.Notice("Downloading course from Canvas...", 0);
+    const notice = new import_obsidian12.Notice("Downloading course from Canvas...", 0);
     try {
       const client = new CanvasApiClient(this.settings.canvasUrl, this.settings.canvasToken);
       const courseData = await this.fetchCourseData(client, courseId);
@@ -1970,10 +3426,10 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       );
       await this.saveCourseFile(courseId, courseData.course.name, markdown);
       notice.hide();
-      new import_obsidian10.Notice("Course downloaded successfully!");
+      new import_obsidian12.Notice("Course downloaded successfully!");
     } catch (error) {
       notice.hide();
-      new import_obsidian10.Notice(`Error: ${error.message}`);
+      new import_obsidian12.Notice(`Error: ${error.message}`);
       console.error("Canvas download error:", error);
     }
   }
@@ -2045,17 +3501,83 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
   async saveCourseFile(courseId, courseName, markdown) {
     const safeName = courseName.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
     const filename = `Canvas Course ${courseId} - ${safeName}.md`;
-    const normalizedPath = (0, import_obsidian10.normalizePath)(filename);
+    const normalizedPath = (0, import_obsidian12.normalizePath)(filename);
     const existingFile = this.app.vault.getAbstractFileByPath(normalizedPath);
-    if (existingFile instanceof import_obsidian10.TFile) {
+    if (existingFile instanceof import_obsidian12.TFile) {
       await this.app.vault.modify(existingFile, markdown);
     } else {
       await this.app.vault.create(normalizedPath, markdown);
     }
     const file = this.app.vault.getAbstractFileByPath(normalizedPath);
-    if (file instanceof import_obsidian10.TFile) {
+    if (file instanceof import_obsidian12.TFile) {
       const leaf = this.app.workspace.getLeaf(false);
       await leaf.openFile(file);
+    }
+  }
+  /**
+   * Main upload course workflow
+   */
+  async uploadCourse() {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new import_obsidian12.Notice("No active file. Please open a Canvas course file.");
+      return;
+    }
+    if (!this.settings.canvasUrl || !this.settings.canvasToken) {
+      new import_obsidian12.Notice("Please configure Canvas URL and token in settings");
+      return;
+    }
+    const content = await this.app.vault.read(activeFile);
+    const parser = new MarkdownParser(content);
+    const { frontmatter, modules } = parser.parse();
+    if (!frontmatter.canvas_course_id) {
+      new import_obsidian12.Notice("Error: Missing canvas_course_id in frontmatter");
+      return;
+    }
+    if (!frontmatter.canvas_url) {
+      new import_obsidian12.Notice("Error: Missing canvas_url in frontmatter");
+      return;
+    }
+    const uploader = new CourseUploader(
+      this.settings.canvasUrl,
+      this.settings.canvasToken,
+      frontmatter.canvas_course_id,
+      true
+      // Enable debug mode
+    );
+    const previewNotice = new import_obsidian12.Notice("Analyzing changes... (check console for debug output)", 0);
+    console.log("=== Canvas Upload Debug Output ===");
+    console.log("Check the console for detailed comparison information");
+    try {
+      const preview = await uploader.generatePreview(modules);
+      previewNotice.hide();
+      new UploadPreviewModal(this.app, preview, async () => {
+        const uploadNotice = new import_obsidian12.Notice("Uploading to Canvas...", 0);
+        try {
+          const stats = await uploader.upload(modules, false);
+          uploadNotice.hide();
+          if (stats.errors.length > 0) {
+            new import_obsidian12.Notice(
+              `Upload complete with errors: ${stats.itemsCreated} created, ${stats.itemsUpdated} updated, ${stats.itemsSkipped} skipped, ${stats.errors.length} errors (see console)`,
+              1e4
+            );
+            console.error("Upload errors:", stats.errors);
+          } else {
+            new import_obsidian12.Notice(
+              `Upload complete: ${stats.itemsCreated} created, ${stats.itemsUpdated} updated, ${stats.itemsSkipped} skipped`,
+              5e3
+            );
+          }
+        } catch (error) {
+          uploadNotice.hide();
+          new import_obsidian12.Notice(`Upload error: ${error.message}`);
+          console.error("Canvas upload error:", error);
+        }
+      }).open();
+    } catch (error) {
+      previewNotice.hide();
+      new import_obsidian12.Notice(`Error generating preview: ${error.message}`);
+      console.error("Canvas preview error:", error);
     }
   }
   async onunload() {
@@ -2079,7 +3601,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       (title) => {
         const markdown = buildModule({ title });
         insertAtCursor(editor, markdown);
-        new import_obsidian10.Notice("Module inserted");
+        new import_obsidian12.Notice("Module inserted");
       }
     );
     modal.open();
@@ -2093,7 +3615,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       (title) => {
         const markdown = buildHeader({ title });
         insertAtCursor(editor, markdown);
-        new import_obsidian10.Notice("Header inserted");
+        new import_obsidian12.Notice("Header inserted");
       }
     );
     modal.open();
@@ -2107,7 +3629,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       (title) => {
         const markdown = buildPage({ title });
         insertAtCursor(editor, markdown);
-        new import_obsidian10.Notice("Page inserted");
+        new import_obsidian12.Notice("Page inserted");
       }
     );
     modal.open();
@@ -2123,7 +3645,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       (data) => {
         const markdown = buildLink({ title: data.field1, url: data.field2 });
         insertAtCursor(editor, markdown);
-        new import_obsidian10.Notice("Link inserted");
+        new import_obsidian12.Notice("Link inserted");
       }
     );
     modal.open();
@@ -2139,7 +3661,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       (data) => {
         const markdown = buildFile({ title: data.field1, filename: data.field2 });
         insertAtCursor(editor, markdown);
-        new import_obsidian10.Notice("File inserted");
+        new import_obsidian12.Notice("File inserted");
       }
     );
     modal.open();
@@ -2150,7 +3672,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       (data) => {
         const markdown = buildAssignment(data);
         insertAtCursor(editor, markdown);
-        new import_obsidian10.Notice("Assignment inserted");
+        new import_obsidian12.Notice("Assignment inserted");
       }
     );
     modal.open();
@@ -2161,7 +3683,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       (data) => {
         const markdown = buildDiscussion(data);
         insertAtCursor(editor, markdown);
-        new import_obsidian10.Notice("Discussion inserted");
+        new import_obsidian12.Notice("Discussion inserted");
       }
     );
     modal.open();
@@ -2172,7 +3694,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
       (data) => {
         const markdown = buildInternalLink(data);
         insertAtCursor(editor, markdown);
-        new import_obsidian10.Notice("Internal link inserted");
+        new import_obsidian12.Notice("Internal link inserted");
       }
     );
     modal.open();

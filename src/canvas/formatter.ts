@@ -119,8 +119,8 @@ canvas_url: ${canvasUrl}/courses/${courseId}
 	 */
 	private formatLink(item: CanvasModuleItem): string {
 		return `\n## [link] ${item.title}\n` +
-		       `url: ${item.external_url || ''}\n` +
-		       `<!-- canvas_module_item_id: ${item.id} -->\n`;
+		       `<!-- canvas_module_item_id: ${item.id} -->\n` +
+		       `url: ${item.external_url || ''}\n`;
 	}
 
 	/**
