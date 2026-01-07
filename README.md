@@ -12,18 +12,21 @@ An Obsidian plugin for syncing course content with Canvas LMS. Download courses 
 
 ## Installation
 
-### From Community Plugins
+> **Note**: This plugin is not yet available in the Obsidian Community Plugins directory. Use BRAT or manual installation for now.
 
-1. Open Obsidian Settings
-2. Go to Community Plugins and disable Safe Mode
-3. Click Browse and search for "Canvas LMS Helper"
-4. Click Install, then Enable
+### Using BRAT (Recommended)
+
+1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from Community Plugins
+2. Open BRAT settings and click "Add Beta plugin"
+3. Enter: `derekvan/obsidian-canvasLMS`
+4. Click "Add Plugin" and enable it in Community Plugins
 
 ### Manual Installation
 
-1. Download the latest release from the releases page
-2. Extract files to `<vault>/.obsidian/plugins/canvaslms-helper/`
-3. Reload Obsidian and enable the plugin in Settings > Community Plugins
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/derekvan/obsidian-canvasLMS/releases)
+2. Create folder `<vault>/.obsidian/plugins/canvaslms-helper/`
+3. Copy the downloaded files into that folder
+4. Reload Obsidian and enable the plugin in Settings > Community Plugins
 
 ## Setup
 
@@ -107,6 +110,7 @@ Use these commands to insert new content templates:
 - File uploads are not supported (files are downloaded as references only)
 - External link URLs cannot be updated after creation
 - Some Canvas features (quizzes, rubrics, etc.) are not supported
+- To avoid conflicts, if you change something on the Canvas web page (like, you edit a page during class), you should re-download the markdown file before editing again so that you don't end up with conflicts from having changes on both sides (on the web and on the local markdown file).
 
 ## Security
 
