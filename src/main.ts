@@ -1,9 +1,18 @@
-import { Plugin, Notice, TFile, normalizePath } from 'obsidian';
+import { Plugin, Notice, TFile, normalizePath, Editor, MarkdownView } from 'obsidian';
 import { SettingsTab, DEFAULT_SETTINGS } from './settings';
 import { CanvasApiClient } from './canvas/api-client';
 import { CanvasCourseFormatter } from './canvas/formatter';
 import { CourseInputModal } from './modals/course-input-modal';
+import { SimpleTextModal } from './modals/simple-text-modal';
+import { TwoFieldModal } from './modals/two-field-modal';
+import { AssignmentModal } from './modals/assignment-modal';
+import { DiscussionModal } from './modals/discussion-modal';
+import { InternalLinkModal } from './modals/internal-link-modal';
+import { ContentTypeModal } from './modals/content-type-modal';
 import type { CanvasModule, CanvasModuleItem } from './canvas/types';
+import type { ContentType } from './templates/template-types';
+import { buildModule, buildHeader, buildPage, buildLink, buildFile, buildAssignment, buildDiscussion, buildInternalLink } from './templates/template-builders';
+import { insertAtCursor } from './utils/editor-utils';
 
 export default class CanvaslmsHelperPlugin extends Plugin {
 	settings: typeof DEFAULT_SETTINGS;
@@ -23,6 +32,80 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 			name: 'Download course',
 			callback: async () => {
 				await this.downloadCourse();
+			}
+		});
+
+		// Template insertion commands
+		this.addCommand({
+			id: 'canvas-insert-module',
+			name: 'Insert Canvas Module',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertModule(editor);
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-insert-header',
+			name: 'Insert Canvas Header',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertHeader(editor);
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-insert-page',
+			name: 'Insert Canvas Page',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertPage(editor);
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-insert-link',
+			name: 'Insert Canvas Link',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertLink(editor);
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-insert-file',
+			name: 'Insert Canvas File',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertFile(editor);
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-insert-assignment',
+			name: 'Insert Canvas Assignment',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertAssignment(editor);
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-insert-discussion',
+			name: 'Insert Canvas Discussion',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertDiscussion(editor);
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-insert-internal-link',
+			name: 'Insert Canvas Internal Link',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertInternalLink(editor);
+			}
+		});
+
+		// Meta-command for content type selection
+		this.addCommand({
+			id: 'canvas-add-content',
+			name: 'Add Canvas Content',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.addContent(editor);
 			}
 		});
 	}
@@ -189,5 +272,162 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	/**
+	 * Template insertion commands
+	 */
+	private async insertModule(editor: Editor): Promise<void> {
+		const modal = new SimpleTextModal(
+			this.app,
+			'Insert Canvas Module',
+			'Module title',
+			'Enter module title (e.g., Week 1 - Introduction)',
+			(title) => {
+				const markdown = buildModule({ title });
+				insertAtCursor(editor, markdown);
+				new Notice('Module inserted');
+			}
+		);
+		modal.open();
+	}
+
+	private async insertHeader(editor: Editor): Promise<void> {
+		const modal = new SimpleTextModal(
+			this.app,
+			'Insert Canvas Header',
+			'Header text',
+			'Enter header text',
+			(title) => {
+				const markdown = buildHeader({ title });
+				insertAtCursor(editor, markdown);
+				new Notice('Header inserted');
+			}
+		);
+		modal.open();
+	}
+
+	private async insertPage(editor: Editor): Promise<void> {
+		const modal = new SimpleTextModal(
+			this.app,
+			'Insert Canvas Page',
+			'Page title',
+			'Enter page title',
+			(title) => {
+				const markdown = buildPage({ title });
+				insertAtCursor(editor, markdown);
+				new Notice('Page inserted');
+			}
+		);
+		modal.open();
+	}
+
+	private async insertLink(editor: Editor): Promise<void> {
+		const modal = new TwoFieldModal(
+			this.app,
+			'Insert Canvas Link',
+			'Link title',
+			'Enter link title',
+			'URL',
+			'Enter URL (e.g., https://example.com)',
+			(data) => {
+				const markdown = buildLink({ title: data.field1, url: data.field2 });
+				insertAtCursor(editor, markdown);
+				new Notice('Link inserted');
+			}
+		);
+		modal.open();
+	}
+
+	private async insertFile(editor: Editor): Promise<void> {
+		const modal = new TwoFieldModal(
+			this.app,
+			'Insert Canvas File',
+			'Display title',
+			'Enter display title',
+			'Filename',
+			'Enter filename (e.g., document.pdf)',
+			(data) => {
+				const markdown = buildFile({ title: data.field1, filename: data.field2 });
+				insertAtCursor(editor, markdown);
+				new Notice('File inserted');
+			}
+		);
+		modal.open();
+	}
+
+	private async insertAssignment(editor: Editor): Promise<void> {
+		const modal = new AssignmentModal(
+			this.app,
+			(data) => {
+				const markdown = buildAssignment(data);
+				insertAtCursor(editor, markdown);
+				new Notice('Assignment inserted');
+			}
+		);
+		modal.open();
+	}
+
+	private async insertDiscussion(editor: Editor): Promise<void> {
+		const modal = new DiscussionModal(
+			this.app,
+			(data) => {
+				const markdown = buildDiscussion(data);
+				insertAtCursor(editor, markdown);
+				new Notice('Discussion inserted');
+			}
+		);
+		modal.open();
+	}
+
+	private async insertInternalLink(editor: Editor): Promise<void> {
+		const modal = new InternalLinkModal(
+			this.app,
+			(data) => {
+				const markdown = buildInternalLink(data);
+				insertAtCursor(editor, markdown);
+				new Notice('Internal link inserted');
+			}
+		);
+		modal.open();
+	}
+
+	/**
+	 * Meta-command: opens type picker then delegates to appropriate insert method
+	 */
+	private async addContent(editor: Editor): Promise<void> {
+		const modal = new ContentTypeModal(
+			this.app,
+			async (type: ContentType) => {
+				// Delegate to appropriate insert method based on selected type
+				switch (type) {
+					case 'module':
+						await this.insertModule(editor);
+						break;
+					case 'header':
+						await this.insertHeader(editor);
+						break;
+					case 'page':
+						await this.insertPage(editor);
+						break;
+					case 'link':
+						await this.insertLink(editor);
+						break;
+					case 'file':
+						await this.insertFile(editor);
+						break;
+					case 'assignment':
+						await this.insertAssignment(editor);
+						break;
+					case 'discussion':
+						await this.insertDiscussion(editor);
+						break;
+					case 'internal-link':
+						await this.insertInternalLink(editor);
+						break;
+				}
+			}
+		);
+		modal.open();
 	}
 }

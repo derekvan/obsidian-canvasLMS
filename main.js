@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => CanvaslmsHelperPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 
 // src/settings.ts
 var import_obsidian = require("obsidian");
@@ -1220,8 +1220,658 @@ var CourseInputModal = class extends import_obsidian3.Modal {
   }
 };
 
+// src/modals/simple-text-modal.ts
+var import_obsidian4 = require("obsidian");
+var SimpleTextModal = class extends import_obsidian4.Modal {
+  constructor(app, title, label, placeholder, onSubmit) {
+    super(app);
+    this.value = "";
+    this.title = title;
+    this.label = label;
+    this.placeholder = placeholder;
+    this.onSubmit = onSubmit;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText(this.title);
+    new import_obsidian4.Setting(contentEl).setName(this.label).addText((text) => {
+      text.setPlaceholder(this.placeholder).onChange((value) => {
+        this.value = value.trim();
+      });
+      setTimeout(() => text.inputEl.focus(), 10);
+      text.inputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this.submit();
+        }
+      });
+    });
+    const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const submitButton = buttonContainer.createEl("button", {
+      text: "Insert",
+      cls: "mod-cta"
+    });
+    submitButton.addEventListener("click", () => this.submit());
+    const cancelButton = buttonContainer.createEl("button", {
+      text: "Cancel"
+    });
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  submit() {
+    if (!this.value) {
+      const existingError = this.contentEl.querySelector(".template-input-error");
+      if (existingError) {
+        existingError.remove();
+      }
+      const errorEl = this.contentEl.createEl("p", {
+        text: `Please enter a ${this.label.toLowerCase()}`,
+        cls: "template-input-error"
+      });
+      errorEl.style.color = "var(--text-error)";
+      return;
+    }
+    this.close();
+    this.onSubmit(this.value);
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
+// src/modals/two-field-modal.ts
+var import_obsidian5 = require("obsidian");
+var TwoFieldModal = class extends import_obsidian5.Modal {
+  constructor(app, title, label1, placeholder1, label2, placeholder2, onSubmit) {
+    super(app);
+    this.data = { field1: "", field2: "" };
+    this.title = title;
+    this.label1 = label1;
+    this.placeholder1 = placeholder1;
+    this.label2 = label2;
+    this.placeholder2 = placeholder2;
+    this.onSubmit = onSubmit;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText(this.title);
+    new import_obsidian5.Setting(contentEl).setName(this.label1).addText((text) => {
+      text.setPlaceholder(this.placeholder1).onChange((value) => {
+        this.data.field1 = value.trim();
+      });
+      setTimeout(() => text.inputEl.focus(), 10);
+      text.inputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          const nextInput = contentEl.querySelectorAll("input")[1];
+          if (nextInput) {
+            nextInput.focus();
+          }
+        }
+      });
+    });
+    new import_obsidian5.Setting(contentEl).setName(this.label2).addText((text) => {
+      text.setPlaceholder(this.placeholder2).onChange((value) => {
+        this.data.field2 = value.trim();
+      });
+      text.inputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this.submit();
+        }
+      });
+    });
+    const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const submitButton = buttonContainer.createEl("button", {
+      text: "Insert",
+      cls: "mod-cta"
+    });
+    submitButton.addEventListener("click", () => this.submit());
+    const cancelButton = buttonContainer.createEl("button", {
+      text: "Cancel"
+    });
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  submit() {
+    if (!this.data.field1 || !this.data.field2) {
+      const existingError = this.contentEl.querySelector(".template-input-error");
+      if (existingError) {
+        existingError.remove();
+      }
+      const errorEl = this.contentEl.createEl("p", {
+        text: "Please fill in all fields",
+        cls: "template-input-error"
+      });
+      errorEl.style.color = "var(--text-error)";
+      return;
+    }
+    this.close();
+    this.onSubmit(this.data);
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
+// src/modals/assignment-modal.ts
+var import_obsidian6 = require("obsidian");
+var AssignmentModal = class extends import_obsidian6.Modal {
+  constructor(app, onSubmit) {
+    super(app);
+    this.data = {
+      title: "",
+      points: 0,
+      dueDate: "",
+      dueTime: "11:59pm",
+      gradeDisplay: "complete_incomplete",
+      submissionTypes: "online_text_entry"
+    };
+    this.selectedSubmissionTypes = /* @__PURE__ */ new Set(["online_text_entry"]);
+    this.onSubmit = onSubmit;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText("Insert Canvas Assignment");
+    new import_obsidian6.Setting(contentEl).setName("Assignment title").setDesc("Required").addText((text) => {
+      text.setPlaceholder("Enter assignment title").onChange((value) => {
+        this.data.title = value.trim();
+      });
+      setTimeout(() => text.inputEl.focus(), 10);
+    });
+    new import_obsidian6.Setting(contentEl).setName("Points").setDesc("Default: 0").addText((text) => {
+      text.setPlaceholder("0").onChange((value) => {
+        const num = parseInt(value);
+        this.data.points = isNaN(num) ? 0 : num;
+      });
+    });
+    new import_obsidian6.Setting(contentEl).setName("Due date").setDesc("Format: 2026-01-15 or leave blank").addText((text) => {
+      text.setPlaceholder("YYYY-MM-DD (optional)").onChange((value) => {
+        this.data.dueDate = value.trim();
+      });
+    });
+    new import_obsidian6.Setting(contentEl).setName("Due time").setDesc("Default: 11:59pm").addText((text) => {
+      text.setPlaceholder("11:59pm").setValue("11:59pm").onChange((value) => {
+        this.data.dueTime = value.trim() || "11:59pm";
+      });
+    });
+    new import_obsidian6.Setting(contentEl).setName("Grade display").setDesc("How grades are displayed").addDropdown((dropdown) => {
+      dropdown.addOption("complete_incomplete", "Complete/Incomplete").addOption("points", "Points").addOption("not_graded", "Not Graded").setValue("complete_incomplete").onChange((value) => {
+        this.data.gradeDisplay = value;
+      });
+    });
+    contentEl.createEl("h3", { text: "Submission types" });
+    contentEl.createEl("p", {
+      text: "Select one or more submission methods",
+      cls: "setting-item-description"
+    });
+    const submissionContainer = contentEl.createDiv({ cls: "submission-types-container" });
+    new import_obsidian6.Setting(submissionContainer).setName("Online text entry").addToggle((toggle) => {
+      toggle.setValue(true).onChange((value) => {
+        this.toggleSubmissionType("online_text_entry", value);
+      });
+    });
+    new import_obsidian6.Setting(submissionContainer).setName("File upload").addToggle((toggle) => {
+      toggle.setValue(false).onChange((value) => {
+        this.toggleSubmissionType("online_upload", value);
+      });
+    });
+    new import_obsidian6.Setting(submissionContainer).setName("URL submission").addToggle((toggle) => {
+      toggle.setValue(false).onChange((value) => {
+        this.toggleSubmissionType("online_url", value);
+      });
+    });
+    new import_obsidian6.Setting(submissionContainer).setName("Media recording").addToggle((toggle) => {
+      toggle.setValue(false).onChange((value) => {
+        this.toggleSubmissionType("media_recording", value);
+      });
+    });
+    new import_obsidian6.Setting(submissionContainer).setName("No submission").addToggle((toggle) => {
+      toggle.setValue(false).onChange((value) => {
+        this.toggleSubmissionType("none", value);
+      });
+    });
+    new import_obsidian6.Setting(submissionContainer).setName("On paper").addToggle((toggle) => {
+      toggle.setValue(false).onChange((value) => {
+        this.toggleSubmissionType("on_paper", value);
+      });
+    });
+    const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const submitButton = buttonContainer.createEl("button", {
+      text: "Insert",
+      cls: "mod-cta"
+    });
+    submitButton.addEventListener("click", () => this.submit());
+    const cancelButton = buttonContainer.createEl("button", {
+      text: "Cancel"
+    });
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  toggleSubmissionType(type, enabled) {
+    if (enabled) {
+      this.selectedSubmissionTypes.add(type);
+    } else {
+      this.selectedSubmissionTypes.delete(type);
+    }
+    this.data.submissionTypes = Array.from(this.selectedSubmissionTypes).join(", ");
+  }
+  submit() {
+    if (!this.data.title) {
+      const existingError = this.contentEl.querySelector(".template-input-error");
+      if (existingError) {
+        existingError.remove();
+      }
+      const errorEl = this.contentEl.createEl("p", {
+        text: "Please enter an assignment title",
+        cls: "template-input-error"
+      });
+      errorEl.style.color = "var(--text-error)";
+      return;
+    }
+    if (this.selectedSubmissionTypes.size === 0) {
+      const existingError = this.contentEl.querySelector(".template-input-error");
+      if (existingError) {
+        existingError.remove();
+      }
+      const errorEl = this.contentEl.createEl("p", {
+        text: "Please select at least one submission type",
+        cls: "template-input-error"
+      });
+      errorEl.style.color = "var(--text-error)";
+      return;
+    }
+    this.close();
+    this.onSubmit(this.data);
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
+// src/modals/discussion-modal.ts
+var import_obsidian7 = require("obsidian");
+var DiscussionModal = class extends import_obsidian7.Modal {
+  constructor(app, onSubmit) {
+    super(app);
+    this.data = {
+      title: "",
+      requireInitialPost: false,
+      threaded: true,
+      graded: false,
+      points: 0,
+      dueDate: "",
+      dueTime: "11:59pm",
+      gradeDisplay: "complete_incomplete"
+    };
+    this.gradingFields = null;
+    this.onSubmit = onSubmit;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText("Insert Canvas Discussion");
+    new import_obsidian7.Setting(contentEl).setName("Discussion title").setDesc("Required").addText((text) => {
+      text.setPlaceholder("Enter discussion title").onChange((value) => {
+        this.data.title = value.trim();
+      });
+      setTimeout(() => text.inputEl.focus(), 10);
+    });
+    new import_obsidian7.Setting(contentEl).setName("Require initial post").setDesc("Students must post before seeing others' posts").addToggle((toggle) => {
+      toggle.setValue(false).onChange((value) => {
+        this.data.requireInitialPost = value;
+      });
+    });
+    new import_obsidian7.Setting(contentEl).setName("Threaded").setDesc("Enable threaded replies").addToggle((toggle) => {
+      toggle.setValue(true).onChange((value) => {
+        this.data.threaded = value;
+      });
+    });
+    new import_obsidian7.Setting(contentEl).setName("Graded").setDesc("Enable grading for this discussion").addToggle((toggle) => {
+      toggle.setValue(false).onChange((value) => {
+        this.data.graded = value;
+        this.toggleGradingFields(value);
+      });
+    });
+    this.gradingFields = contentEl.createDiv({ cls: "grading-fields" });
+    this.gradingFields.style.display = "none";
+    new import_obsidian7.Setting(this.gradingFields).setName("Points").setDesc("Points for this discussion").addText((text) => {
+      text.setPlaceholder("0").onChange((value) => {
+        const num = parseInt(value);
+        this.data.points = isNaN(num) ? 0 : num;
+      });
+    });
+    new import_obsidian7.Setting(this.gradingFields).setName("Due date").setDesc("Format: 2026-01-15").addText((text) => {
+      text.setPlaceholder("YYYY-MM-DD").onChange((value) => {
+        this.data.dueDate = value.trim();
+      });
+    });
+    new import_obsidian7.Setting(this.gradingFields).setName("Due time").setDesc("Default: 11:59pm").addText((text) => {
+      text.setPlaceholder("11:59pm").setValue("11:59pm").onChange((value) => {
+        this.data.dueTime = value.trim() || "11:59pm";
+      });
+    });
+    new import_obsidian7.Setting(this.gradingFields).setName("Grade display").setDesc("How grades are displayed").addDropdown((dropdown) => {
+      dropdown.addOption("complete_incomplete", "Complete/Incomplete").addOption("points", "Points").addOption("not_graded", "Not Graded").setValue("complete_incomplete").onChange((value) => {
+        this.data.gradeDisplay = value;
+      });
+    });
+    const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const submitButton = buttonContainer.createEl("button", {
+      text: "Insert",
+      cls: "mod-cta"
+    });
+    submitButton.addEventListener("click", () => this.submit());
+    const cancelButton = buttonContainer.createEl("button", {
+      text: "Cancel"
+    });
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  toggleGradingFields(show) {
+    if (this.gradingFields) {
+      this.gradingFields.style.display = show ? "block" : "none";
+    }
+  }
+  submit() {
+    if (!this.data.title) {
+      const existingError = this.contentEl.querySelector(".template-input-error");
+      if (existingError) {
+        existingError.remove();
+      }
+      const errorEl = this.contentEl.createEl("p", {
+        text: "Please enter a discussion title",
+        cls: "template-input-error"
+      });
+      errorEl.style.color = "var(--text-error)";
+      return;
+    }
+    this.close();
+    this.onSubmit(this.data);
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
+// src/modals/internal-link-modal.ts
+var import_obsidian8 = require("obsidian");
+var InternalLinkModal = class extends import_obsidian8.Modal {
+  constructor(app, onSubmit) {
+    super(app);
+    this.data = {
+      type: "Page",
+      name: ""
+    };
+    this.onSubmit = onSubmit;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText("Insert Canvas Internal Link");
+    contentEl.createEl("p", {
+      text: "Create a cross-reference to another Canvas item",
+      cls: "mod-muted"
+    });
+    new import_obsidian8.Setting(contentEl).setName("Link type").setDesc("Type of content to link to").addDropdown((dropdown) => {
+      dropdown.addOption("Page", "Page").addOption("Assignment", "Assignment").addOption("Discussion", "Discussion").addOption("File", "File").setValue("Page").onChange((value) => {
+        this.data.type = value;
+      });
+    });
+    new import_obsidian8.Setting(contentEl).setName("Item name").setDesc("Name of the item to link to").addText((text) => {
+      text.setPlaceholder("Enter item name").onChange((value) => {
+        this.data.name = value.trim();
+      });
+      setTimeout(() => text.inputEl.focus(), 10);
+      text.inputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this.submit();
+        }
+      });
+    });
+    contentEl.createEl("p", {
+      text: "Example: [[Page:Course Policies]] or [[Assignment:Homework 1]]",
+      cls: "mod-muted"
+    });
+    const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const submitButton = buttonContainer.createEl("button", {
+      text: "Insert",
+      cls: "mod-cta"
+    });
+    submitButton.addEventListener("click", () => this.submit());
+    const cancelButton = buttonContainer.createEl("button", {
+      text: "Cancel"
+    });
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  submit() {
+    if (!this.data.name) {
+      const existingError = this.contentEl.querySelector(".template-input-error");
+      if (existingError) {
+        existingError.remove();
+      }
+      const errorEl = this.contentEl.createEl("p", {
+        text: "Please enter an item name",
+        cls: "template-input-error"
+      });
+      errorEl.style.color = "var(--text-error)";
+      return;
+    }
+    this.close();
+    this.onSubmit(this.data);
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
+// src/modals/content-type-modal.ts
+var import_obsidian9 = require("obsidian");
+var ContentTypeModal = class extends import_obsidian9.Modal {
+  constructor(app, onSubmit) {
+    super(app);
+    this.selectedType = "module";
+    this.contentTypes = [
+      {
+        value: "module",
+        label: "Module",
+        description: "Top-level course section (H1)"
+      },
+      {
+        value: "header",
+        label: "Header",
+        description: "Text header within a module"
+      },
+      {
+        value: "page",
+        label: "Page",
+        description: "Wiki-style content page"
+      },
+      {
+        value: "link",
+        label: "External Link",
+        description: "Link to external URL"
+      },
+      {
+        value: "file",
+        label: "File",
+        description: "Reference to Canvas file"
+      },
+      {
+        value: "assignment",
+        label: "Assignment",
+        description: "Graded assignment with metadata"
+      },
+      {
+        value: "discussion",
+        label: "Discussion",
+        description: "Discussion board with optional grading"
+      },
+      {
+        value: "internal-link",
+        label: "Internal Link",
+        description: "Cross-reference to another Canvas item"
+      }
+    ];
+    this.onSubmit = onSubmit;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText("Add Canvas Content");
+    contentEl.createEl("p", {
+      text: "Select the type of content to insert"
+    });
+    new import_obsidian9.Setting(contentEl).setName("Content type").addDropdown((dropdown) => {
+      this.contentTypes.forEach((type) => {
+        dropdown.addOption(type.value, type.label);
+      });
+      dropdown.setValue("module").onChange((value) => {
+        this.selectedType = value;
+        this.updateDescription(value);
+      });
+    });
+    const descEl = contentEl.createEl("p", {
+      text: this.contentTypes[0].description,
+      cls: "mod-muted content-type-description"
+    });
+    this.updateDescription = (type) => {
+      const option = this.contentTypes.find((t) => t.value === type);
+      if (option) {
+        descEl.setText(option.description);
+      }
+    };
+    const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const submitButton = buttonContainer.createEl("button", {
+      text: "Next",
+      cls: "mod-cta"
+    });
+    submitButton.addEventListener("click", () => this.submit());
+    const cancelButton = buttonContainer.createEl("button", {
+      text: "Cancel"
+    });
+    cancelButton.addEventListener("click", () => this.close());
+    setTimeout(() => {
+      const dropdown = contentEl.querySelector("select");
+      if (dropdown) dropdown.focus();
+    }, 10);
+  }
+  submit() {
+    this.close();
+    this.onSubmit(this.selectedType);
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
+// src/templates/template-builders.ts
+function buildModule(data) {
+  return `# ${data.title}
+`;
+}
+function buildHeader(data) {
+  return `
+## [header] ${data.title}
+`;
+}
+function buildPage(data) {
+  return `
+## [page] ${data.title}
+`;
+}
+function buildLink(data) {
+  return `
+## [link] ${data.title}
+url: ${data.url}
+`;
+}
+function buildFile(data) {
+  return `
+## [file] ${data.title}
+filename: ${data.filename}
+`;
+}
+function buildAssignment(data) {
+  let md = `
+## [assignment] ${data.title}
+`;
+  if (data.points !== void 0 && data.points !== 0) {
+    md += `points: ${data.points}
+`;
+  }
+  if (data.dueDate) {
+    const time = data.dueTime || "11:59pm";
+    md += `due: ${data.dueDate} ${time}
+`;
+  }
+  if (data.gradeDisplay && data.gradeDisplay !== "complete_incomplete") {
+    md += `grade_display: ${data.gradeDisplay}
+`;
+  }
+  if (data.submissionTypes && data.submissionTypes !== "online_text_entry") {
+    md += `submission_types: ${data.submissionTypes}
+`;
+  }
+  md += "\n---\n";
+  return md;
+}
+function buildDiscussion(data) {
+  let md = `
+## [discussion] ${data.title}
+`;
+  if (data.requireInitialPost !== void 0) {
+    md += `require_initial_post: ${data.requireInitialPost}
+`;
+  }
+  if (data.threaded !== void 0 && data.threaded !== true) {
+    md += `threaded: ${data.threaded}
+`;
+  }
+  if (data.graded !== void 0) {
+    md += `graded: ${data.graded}
+`;
+  }
+  if (data.graded) {
+    if (data.points !== void 0) {
+      md += `points: ${data.points}
+`;
+    }
+    if (data.dueDate) {
+      const time = data.dueTime || "11:59pm";
+      md += `due: ${data.dueDate} ${time}
+`;
+    }
+    if (data.gradeDisplay) {
+      md += `grade_display: ${data.gradeDisplay}
+`;
+    }
+  }
+  md += "\n---\n";
+  return md;
+}
+function buildInternalLink(data) {
+  return `[[${data.type}:${data.name}]]`;
+}
+
+// src/utils/editor-utils.ts
+function insertAtCursor(editor, text) {
+  const cursor = editor.getCursor();
+  editor.replaceRange(text, cursor);
+  const lines = text.split("\n");
+  const newLine = cursor.line + lines.length - 1;
+  const newCh = lines.length === 1 ? cursor.ch + text.length : lines[lines.length - 1].length;
+  editor.setCursor({ line: newLine, ch: newCh });
+}
+
 // src/main.ts
-var CanvaslmsHelperPlugin = class extends import_obsidian4.Plugin {
+var CanvaslmsHelperPlugin = class extends import_obsidian10.Plugin {
   async onload() {
     console.log("Loading canvasLMS-helper");
     await this.loadSettings();
@@ -1233,18 +1883,81 @@ var CanvaslmsHelperPlugin = class extends import_obsidian4.Plugin {
         await this.downloadCourse();
       }
     });
+    this.addCommand({
+      id: "canvas-insert-module",
+      name: "Insert Canvas Module",
+      editorCallback: async (editor, view) => {
+        await this.insertModule(editor);
+      }
+    });
+    this.addCommand({
+      id: "canvas-insert-header",
+      name: "Insert Canvas Header",
+      editorCallback: async (editor, view) => {
+        await this.insertHeader(editor);
+      }
+    });
+    this.addCommand({
+      id: "canvas-insert-page",
+      name: "Insert Canvas Page",
+      editorCallback: async (editor, view) => {
+        await this.insertPage(editor);
+      }
+    });
+    this.addCommand({
+      id: "canvas-insert-link",
+      name: "Insert Canvas Link",
+      editorCallback: async (editor, view) => {
+        await this.insertLink(editor);
+      }
+    });
+    this.addCommand({
+      id: "canvas-insert-file",
+      name: "Insert Canvas File",
+      editorCallback: async (editor, view) => {
+        await this.insertFile(editor);
+      }
+    });
+    this.addCommand({
+      id: "canvas-insert-assignment",
+      name: "Insert Canvas Assignment",
+      editorCallback: async (editor, view) => {
+        await this.insertAssignment(editor);
+      }
+    });
+    this.addCommand({
+      id: "canvas-insert-discussion",
+      name: "Insert Canvas Discussion",
+      editorCallback: async (editor, view) => {
+        await this.insertDiscussion(editor);
+      }
+    });
+    this.addCommand({
+      id: "canvas-insert-internal-link",
+      name: "Insert Canvas Internal Link",
+      editorCallback: async (editor, view) => {
+        await this.insertInternalLink(editor);
+      }
+    });
+    this.addCommand({
+      id: "canvas-add-content",
+      name: "Add Canvas Content",
+      editorCallback: async (editor, view) => {
+        await this.addContent(editor);
+      }
+    });
   }
   /**
    * Main download course workflow
    */
   async downloadCourse() {
     if (!this.settings.canvasUrl || !this.settings.canvasToken) {
-      new import_obsidian4.Notice("Please configure Canvas URL and token in settings");
+      new import_obsidian10.Notice("Please configure Canvas URL and token in settings");
       return;
     }
     const courseId = await this.promptForCourseId();
     if (!courseId) return;
-    const notice = new import_obsidian4.Notice("Downloading course from Canvas...", 0);
+    const notice = new import_obsidian10.Notice("Downloading course from Canvas...", 0);
     try {
       const client = new CanvasApiClient(this.settings.canvasUrl, this.settings.canvasToken);
       const courseData = await this.fetchCourseData(client, courseId);
@@ -1257,10 +1970,10 @@ var CanvaslmsHelperPlugin = class extends import_obsidian4.Plugin {
       );
       await this.saveCourseFile(courseId, courseData.course.name, markdown);
       notice.hide();
-      new import_obsidian4.Notice("Course downloaded successfully!");
+      new import_obsidian10.Notice("Course downloaded successfully!");
     } catch (error) {
       notice.hide();
-      new import_obsidian4.Notice(`Error: ${error.message}`);
+      new import_obsidian10.Notice(`Error: ${error.message}`);
       console.error("Canvas download error:", error);
     }
   }
@@ -1332,15 +2045,15 @@ var CanvaslmsHelperPlugin = class extends import_obsidian4.Plugin {
   async saveCourseFile(courseId, courseName, markdown) {
     const safeName = courseName.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
     const filename = `Canvas Course ${courseId} - ${safeName}.md`;
-    const normalizedPath = (0, import_obsidian4.normalizePath)(filename);
+    const normalizedPath = (0, import_obsidian10.normalizePath)(filename);
     const existingFile = this.app.vault.getAbstractFileByPath(normalizedPath);
-    if (existingFile instanceof import_obsidian4.TFile) {
+    if (existingFile instanceof import_obsidian10.TFile) {
       await this.app.vault.modify(existingFile, markdown);
     } else {
       await this.app.vault.create(normalizedPath, markdown);
     }
     const file = this.app.vault.getAbstractFileByPath(normalizedPath);
-    if (file instanceof import_obsidian4.TFile) {
+    if (file instanceof import_obsidian10.TFile) {
       const leaf = this.app.workspace.getLeaf(false);
       await leaf.openFile(file);
     }
@@ -1353,5 +2066,152 @@ var CanvaslmsHelperPlugin = class extends import_obsidian4.Plugin {
   }
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+  /**
+   * Template insertion commands
+   */
+  async insertModule(editor) {
+    const modal = new SimpleTextModal(
+      this.app,
+      "Insert Canvas Module",
+      "Module title",
+      "Enter module title (e.g., Week 1 - Introduction)",
+      (title) => {
+        const markdown = buildModule({ title });
+        insertAtCursor(editor, markdown);
+        new import_obsidian10.Notice("Module inserted");
+      }
+    );
+    modal.open();
+  }
+  async insertHeader(editor) {
+    const modal = new SimpleTextModal(
+      this.app,
+      "Insert Canvas Header",
+      "Header text",
+      "Enter header text",
+      (title) => {
+        const markdown = buildHeader({ title });
+        insertAtCursor(editor, markdown);
+        new import_obsidian10.Notice("Header inserted");
+      }
+    );
+    modal.open();
+  }
+  async insertPage(editor) {
+    const modal = new SimpleTextModal(
+      this.app,
+      "Insert Canvas Page",
+      "Page title",
+      "Enter page title",
+      (title) => {
+        const markdown = buildPage({ title });
+        insertAtCursor(editor, markdown);
+        new import_obsidian10.Notice("Page inserted");
+      }
+    );
+    modal.open();
+  }
+  async insertLink(editor) {
+    const modal = new TwoFieldModal(
+      this.app,
+      "Insert Canvas Link",
+      "Link title",
+      "Enter link title",
+      "URL",
+      "Enter URL (e.g., https://example.com)",
+      (data) => {
+        const markdown = buildLink({ title: data.field1, url: data.field2 });
+        insertAtCursor(editor, markdown);
+        new import_obsidian10.Notice("Link inserted");
+      }
+    );
+    modal.open();
+  }
+  async insertFile(editor) {
+    const modal = new TwoFieldModal(
+      this.app,
+      "Insert Canvas File",
+      "Display title",
+      "Enter display title",
+      "Filename",
+      "Enter filename (e.g., document.pdf)",
+      (data) => {
+        const markdown = buildFile({ title: data.field1, filename: data.field2 });
+        insertAtCursor(editor, markdown);
+        new import_obsidian10.Notice("File inserted");
+      }
+    );
+    modal.open();
+  }
+  async insertAssignment(editor) {
+    const modal = new AssignmentModal(
+      this.app,
+      (data) => {
+        const markdown = buildAssignment(data);
+        insertAtCursor(editor, markdown);
+        new import_obsidian10.Notice("Assignment inserted");
+      }
+    );
+    modal.open();
+  }
+  async insertDiscussion(editor) {
+    const modal = new DiscussionModal(
+      this.app,
+      (data) => {
+        const markdown = buildDiscussion(data);
+        insertAtCursor(editor, markdown);
+        new import_obsidian10.Notice("Discussion inserted");
+      }
+    );
+    modal.open();
+  }
+  async insertInternalLink(editor) {
+    const modal = new InternalLinkModal(
+      this.app,
+      (data) => {
+        const markdown = buildInternalLink(data);
+        insertAtCursor(editor, markdown);
+        new import_obsidian10.Notice("Internal link inserted");
+      }
+    );
+    modal.open();
+  }
+  /**
+   * Meta-command: opens type picker then delegates to appropriate insert method
+   */
+  async addContent(editor) {
+    const modal = new ContentTypeModal(
+      this.app,
+      async (type) => {
+        switch (type) {
+          case "module":
+            await this.insertModule(editor);
+            break;
+          case "header":
+            await this.insertHeader(editor);
+            break;
+          case "page":
+            await this.insertPage(editor);
+            break;
+          case "link":
+            await this.insertLink(editor);
+            break;
+          case "file":
+            await this.insertFile(editor);
+            break;
+          case "assignment":
+            await this.insertAssignment(editor);
+            break;
+          case "discussion":
+            await this.insertDiscussion(editor);
+            break;
+          case "internal-link":
+            await this.insertInternalLink(editor);
+            break;
+        }
+      }
+    );
+    modal.open();
   }
 };
