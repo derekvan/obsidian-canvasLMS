@@ -6,7 +6,8 @@ import type {
 	CanvasPage,
 	CanvasAssignment,
 	CanvasDiscussion,
-	CanvasFile
+	CanvasFile,
+	CanvasFolder
 } from './types';
 
 export class CanvasApiClient {
@@ -177,5 +178,19 @@ export class CanvasApiClient {
 	 */
 	async getFile(fileId: string): Promise<CanvasFile> {
 		return await this.request<CanvasFile>(`/api/v1/files/${fileId}`);
+	}
+
+	/**
+	 * Get all folders in a course (includes all subfolders as a flat list)
+	 */
+	async getCourseFolders(courseId: string): Promise<CanvasFolder[]> {
+		return await this.requestPaginated<CanvasFolder>(`/api/v1/courses/${courseId}/folders`);
+	}
+
+	/**
+	 * Get all files in a folder
+	 */
+	async getFolderFiles(folderId: number): Promise<CanvasFile[]> {
+		return await this.requestPaginated<CanvasFile>(`/api/v1/folders/${folderId}/files`);
 	}
 }

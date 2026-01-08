@@ -29,6 +29,9 @@ export class CanvasCourseFormatter {
 			markdown += this.formatModule(module, itemsData);
 		}
 
+		// Add Course Files section for files not in modules
+		markdown += this.formatCourseFiles(modules, itemsData);
+
 		return markdown;
 	}
 
@@ -248,5 +251,47 @@ canvas_url: ${canvasUrl}/courses/${courseId}
 		hours = hours % 12 || 12;
 
 		return `${year}-${month}-${day} ${String(hours).padStart(2, '0')}:${minutes}${ampm}`;
+	}
+
+	/**
+	 * Format files not in any module
+	 */
+	private formatCourseFiles(modules: CanvasModule[], itemsData: Map<string, any>): string {
+		const courseFiles = itemsData.get('course_files') as CanvasFile[] | undefined;
+		if (!courseFiles || courseFiles.length === 0) {
+			return '';
+		}
+
+		// Collect file IDs that are already in modules
+		const moduleFileIds = new Set<number>();
+		for (const module of modules) {
+			const items = itemsData.get(`module_${module.id}`) as CanvasModuleItem[] | undefined;
+			if (items) {
+				for (const item of items) {
+					if (item.type === 'File' && item.content_id) {
+						moduleFileIds.add(item.content_id);
+					}
+				}
+			}
+		}
+
+		// Find files not in any module
+		const unmatchedFiles = courseFiles.filter(file => !moduleFileIds.has(file.id));
+
+		if (unmatchedFiles.length === 0) {
+			return '';
+		}
+
+		// Format the Course Files section
+		let markdown = '\n\n---\n\n# Course Files\n\n';
+		markdown += '<!-- Files uploaded to Canvas but not added to any module -->\n\n';
+
+		for (const file of unmatchedFiles) {
+			markdown += `## [file] ${file.display_name}\n`;
+			markdown += `<!-- canvas_file_id: ${file.id} -->\n`;
+			markdown += `filename: ${file.filename}\n\n`;
+		}
+
+		return markdown;
 	}
 }

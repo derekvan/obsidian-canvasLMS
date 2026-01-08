@@ -207,6 +207,18 @@ var CanvasApiClient = class {
   async getFile(fileId) {
     return await this.request(`/api/v1/files/${fileId}`);
   }
+  /**
+   * Get all folders in a course (includes all subfolders as a flat list)
+   */
+  async getCourseFolders(courseId) {
+    return await this.requestPaginated(`/api/v1/courses/${courseId}/folders`);
+  }
+  /**
+   * Get all files in a folder
+   */
+  async getFolderFiles(folderId) {
+    return await this.requestPaginated(`/api/v1/folders/${folderId}/files`);
+  }
 };
 
 // node_modules/turndown/lib/turndown.browser.es.js
@@ -997,6 +1009,7 @@ var CanvasCourseFormatter = class {
     for (const module2 of modules) {
       markdown += this.formatModule(module2, itemsData);
     }
+    markdown += this.formatCourseFiles(modules, itemsData);
     return markdown;
   }
   /**
@@ -1204,6 +1217,42 @@ url: ${item.external_url || ""}
     const ampm = hours >= 12 ? "pm" : "am";
     hours = hours % 12 || 12;
     return `${year}-${month}-${day} ${String(hours).padStart(2, "0")}:${minutes}${ampm}`;
+  }
+  /**
+   * Format files not in any module
+   */
+  formatCourseFiles(modules, itemsData) {
+    const courseFiles = itemsData.get("course_files");
+    if (!courseFiles || courseFiles.length === 0) {
+      return "";
+    }
+    const moduleFileIds = /* @__PURE__ */ new Set();
+    for (const module2 of modules) {
+      const items = itemsData.get(`module_${module2.id}`);
+      if (items) {
+        for (const item of items) {
+          if (item.type === "File" && item.content_id) {
+            moduleFileIds.add(item.content_id);
+          }
+        }
+      }
+    }
+    const unmatchedFiles = courseFiles.filter((file) => !moduleFileIds.has(file.id));
+    if (unmatchedFiles.length === 0) {
+      return "";
+    }
+    let markdown = "\n\n---\n\n# Course Files\n\n";
+    markdown += "<!-- Files uploaded to Canvas but not added to any module -->\n\n";
+    for (const file of unmatchedFiles) {
+      markdown += `## [file] ${file.display_name}
+`;
+      markdown += `<!-- canvas_file_id: ${file.id} -->
+`;
+      markdown += `filename: ${file.filename}
+
+`;
+    }
+    return markdown;
   }
 };
 
@@ -3048,6 +3097,11 @@ var CourseUploader = class {
     const canvasData = await this.fetchCanvasData(modules);
     this.log(`Fetched Canvas data entries: ${canvasData.size}`);
     for (const module2 of modules) {
+      if (module2.title === "Course Files") {
+        this.log(`
+--- Skipping "Course Files" section (not a module) ---`);
+        continue;
+      }
       this.log(`
 --- Processing module: "${module2.title}" ---`);
       this.log(`Module Canvas ID: ${module2.canvasModuleId || "NONE (will create)"}`);
@@ -3227,6 +3281,20 @@ var CourseUploader = class {
           }
         }
       }
+      for (const module2 of modules) {
+        for (const item of module2.items) {
+          if (item.type === "file" && item.canvasFileId) {
+            try {
+              const file = await this.apiClient.getFile(
+                String(item.canvasFileId)
+              );
+              data.set(`file_${file.id}`, file);
+            } catch (error) {
+              console.warn(`Failed to fetch Canvas data for file: ${item.title}`, error);
+            }
+          }
+        }
+      }
     } catch (error) {
       console.warn("Failed to fetch Canvas data, proceeding with upload", error);
     }
@@ -3236,6 +3304,14 @@ var CourseUploader = class {
    * Upload a single module and its items
    */
   async uploadModule(module2, canvasData, stats, itemsNeedingLinks) {
+    if (module2.title === "Course Files") {
+      for (const item of module2.items) {
+        if (item.type === "file") {
+          await this.uploadFile(item, canvasData, stats);
+        }
+      }
+      return 0;
+    }
     let moduleId = module2.canvasModuleId;
     try {
       const canvasModule = moduleId ? canvasData.get(`module_${moduleId}`) : void 0;
@@ -3284,7 +3360,7 @@ var CourseUploader = class {
           await this.uploadLink(item, moduleId, stats);
           break;
         case "file":
-          stats.itemsSkipped++;
+          await this.uploadFile(item, canvasData, stats);
           break;
       }
     } catch (error) {
@@ -3483,6 +3559,37 @@ var CourseUploader = class {
     }
   }
   /**
+   * Register a file for link resolution (files cannot be uploaded via API)
+   */
+  async uploadFile(file, canvasData, stats) {
+    stats.itemsSkipped++;
+    if (file.canvasFileId) {
+      const canvasFile = canvasData.get(`file_${file.canvasFileId}`);
+      if (canvasFile) {
+        let fileUrl;
+        if (canvasFile.preview_url) {
+          fileUrl = canvasFile.preview_url;
+        } else {
+          const baseUrl = this.apiClientWrite["_baseUrl"];
+          const verifierMatch = canvasFile.url.match(/[?&]verifier=([^&]+)/);
+          const verifier = verifierMatch ? verifierMatch[1] : null;
+          fileUrl = `${baseUrl}/courses/${this.courseId}/files/${canvasFile.id}`;
+          if (verifier) {
+            fileUrl += `?verifier=${verifier}`;
+          }
+        }
+        this.linkResolver.register("file", canvasFile.display_name, fileUrl);
+        if (canvasFile.filename !== canvasFile.display_name) {
+          this.linkResolver.register("file", canvasFile.filename, fileUrl);
+        }
+      } else {
+        console.warn(
+          `File "${file.title}" has Canvas ID ${file.canvasFileId} but was not found in Canvas. Links to this file will not be resolved.`
+        );
+      }
+    }
+  }
+  /**
    * Phase 2: Resolve internal links
    */
   async resolveLinks(items, stats) {
@@ -3490,12 +3597,13 @@ var CourseUploader = class {
       try {
         const { resolved, hasLinks } = this.linkResolver.resolve(item.content);
         if (hasLinks) {
+          const resolvedHtml = markdownToSimpleHtml(resolved);
           if (item.type === "page") {
-            await this.apiClientWrite.updatePage(item.id, { body: resolved });
+            await this.apiClientWrite.updatePage(item.id, { body: resolvedHtml });
           } else if (item.type === "assignment") {
-            await this.apiClientWrite.updateAssignment(item.id, { description: resolved });
+            await this.apiClientWrite.updateAssignment(item.id, { description: resolvedHtml });
           } else if (item.type === "discussion") {
-            await this.apiClientWrite.updateDiscussion(item.id, { message: resolved });
+            await this.apiClientWrite.updateDiscussion(item.id, { message: resolvedHtml });
           }
         }
       } catch (error) {
@@ -3669,6 +3777,8 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
         await this.fetchItemDetails(client, courseId, item, itemsData);
       }
     }
+    const allFiles = await this.fetchAllCourseFiles(client, courseId);
+    itemsData.set("course_files", allFiles);
     return { course, modules, itemsData };
   }
   /**
@@ -3704,6 +3814,27 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       }
     } catch (error) {
       console.warn(`Failed to fetch details for ${item.type} "${item.title}":`, error);
+    }
+  }
+  /**
+   * Fetch all files in a course, regardless of whether they're in modules
+   */
+  async fetchAllCourseFiles(client, courseId) {
+    try {
+      const folders = await client.getCourseFolders(courseId);
+      const allFiles = [];
+      for (const folder of folders) {
+        try {
+          const files = await client.getFolderFiles(folder.id);
+          allFiles.push(...files);
+        } catch (error) {
+          console.warn(`Failed to fetch files from folder "${folder.name}":`, error);
+        }
+      }
+      return allFiles;
+    } catch (error) {
+      console.warn("Failed to fetch course files:", error);
+      return [];
     }
   }
   /**

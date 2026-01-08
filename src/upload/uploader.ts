@@ -21,7 +21,8 @@ import type {
 	CanvasModule,
 	CanvasPage,
 	CanvasAssignment,
-	CanvasDiscussion
+	CanvasDiscussion,
+	CanvasFile
 } from '../canvas/types';
 
 /**
@@ -74,6 +75,12 @@ export class CourseUploader {
 		this.log(`Fetched Canvas data entries: ${canvasData.size}`);
 
 		for (const module of modules) {
+			// Skip "Course Files" section in preview - it's not a real module
+			if (module.title === 'Course Files') {
+				this.log(`\n--- Skipping "Course Files" section (not a module) ---`);
+				continue;
+			}
+
 			this.log(`\n--- Processing module: "${module.title}" ---`);
 			this.log(`Module Canvas ID: ${module.canvasModuleId || 'NONE (will create)'}`);
 			const previewItem = await this.generateModulePreview(module, canvasData);
@@ -303,6 +310,23 @@ export class CourseUploader {
 					}
 				}
 			}
+
+		// Fetch file details for items with Canvas file IDs
+		for (const module of modules) {
+			for (const item of module.items) {
+				if (item.type === 'file' && (item as ParsedFile).canvasFileId) {
+					try {
+						const file = await this.apiClient.getFile(
+							String((item as ParsedFile).canvasFileId)
+						);
+						data.set(`file_${file.id}`, file);
+					} catch (error) {
+						// Stale ID or deleted file - log warning but continue
+						console.warn(`Failed to fetch Canvas data for file: ${item.title}`, error);
+					}
+				}
+			}
+		}
 		} catch (error) {
 			// Graceful degradation: if fetch fails, proceed with update anyway
 			console.warn('Failed to fetch Canvas data, proceeding with upload', error);
@@ -320,6 +344,17 @@ export class CourseUploader {
 		stats: UploadStats,
 		itemsNeedingLinks: Array<{ type: string; id: number | string; content: string }>
 	): Promise<number> {
+		// Special handling for "Course Files" section - not a real module
+		if (module.title === 'Course Files') {
+			// Process files for link resolution but don't create a module
+			for (const item of module.items) {
+				if (item.type === 'file') {
+					await this.uploadFile(item as ParsedFile, canvasData, stats);
+				}
+			}
+			return 0; // Return dummy moduleId since we didn't create one
+		}
+
 		let moduleId = module.canvasModuleId;
 
 		try {
@@ -384,8 +419,7 @@ export class CourseUploader {
 					await this.uploadLink(item as ParsedLink, moduleId, stats);
 					break;
 				case 'file':
-					// Files cannot be uploaded via API, skip
-					stats.itemsSkipped++;
+				await this.uploadFile(item as ParsedFile, canvasData, stats);
 					break;
 			}
 		} catch (error: any) {
@@ -660,6 +694,61 @@ export class CourseUploader {
 	}
 
 	/**
+	 * Register a file for link resolution (files cannot be uploaded via API)
+	 */
+	private async uploadFile(
+		file: ParsedFile,
+		canvasData: Map<string, any>,
+		stats: UploadStats
+	): Promise<void> {
+		// Files cannot be uploaded via API, always skip
+		stats.itemsSkipped++;
+
+		// Register file in LinkResolver if it exists in Canvas
+		if (file.canvasFileId) {
+			const canvasFile = canvasData.get(`file_${file.canvasFileId}`) as CanvasFile | undefined;
+
+			if (canvasFile) {
+				// Construct preview URL instead of using download URL
+				// Preview URL format: [base]/courses/[course-id]/files/[file-id]?verifier=[verifier]
+				let fileUrl: string;
+
+				if (canvasFile.preview_url) {
+					// Use preview_url if available
+					fileUrl = canvasFile.preview_url;
+				} else {
+					// Construct preview URL from base URL, course ID, and file ID
+					const baseUrl = this.apiClientWrite['_baseUrl'];
+
+					// Extract verifier from download URL if present
+					const verifierMatch = canvasFile.url.match(/[?&]verifier=([^&]+)/);
+					const verifier = verifierMatch ? verifierMatch[1] : null;
+
+					// Construct preview URL
+					fileUrl = `${baseUrl}/courses/${this.courseId}/files/${canvasFile.id}`;
+					if (verifier) {
+						fileUrl += `?verifier=${verifier}`;
+					}
+				}
+
+				// Register with display_name
+				this.linkResolver.register('file', canvasFile.display_name, fileUrl);
+
+				// Also register with filename (if different from display_name)
+				if (canvasFile.filename !== canvasFile.display_name) {
+					this.linkResolver.register('file', canvasFile.filename, fileUrl);
+				}
+			} else {
+				// File was deleted from Canvas or has stale ID
+				console.warn(
+					`File "${file.title}" has Canvas ID ${file.canvasFileId} but was not found in Canvas. ` +
+					`Links to this file will not be resolved.`
+				);
+			}
+		}
+	}
+
+	/**
 	 * Phase 2: Resolve internal links
 	 */
 	private async resolveLinks(
@@ -668,18 +757,21 @@ export class CourseUploader {
 	): Promise<void> {
 		for (const item of items) {
 			try {
-				const { resolved, hasLinks } = this.linkResolver.resolve(item.content);
+			const { resolved, hasLinks } = this.linkResolver.resolve(item.content);
 
-				if (hasLinks) {
-					// Update content with resolved links
-					if (item.type === 'page') {
-						await this.apiClientWrite.updatePage(item.id as string, { body: resolved });
-					} else if (item.type === 'assignment') {
-						await this.apiClientWrite.updateAssignment(item.id as number, { description: resolved });
-					} else if (item.type === 'discussion') {
-						await this.apiClientWrite.updateDiscussion(item.id as number, { message: resolved });
-					}
+			if (hasLinks) {
+				// Convert resolved markdown to HTML (resolved content has <a> tags mixed with markdown)
+				const resolvedHtml = markdownToSimpleHtml(resolved);
+
+				// Update content with resolved links
+				if (item.type === 'page') {
+					await this.apiClientWrite.updatePage(item.id as string, { body: resolvedHtml });
+				} else if (item.type === 'assignment') {
+					await this.apiClientWrite.updateAssignment(item.id as number, { description: resolvedHtml });
+				} else if (item.type === 'discussion') {
+					await this.apiClientWrite.updateDiscussion(item.id as number, { message: resolvedHtml });
 				}
+			}
 			} catch (error: any) {
 				stats.errors.push({
 					itemType: item.type,

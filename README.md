@@ -1,5 +1,8 @@
 # Canvas LMS Helper
 
+> **⚠️ Active Development Warning**
+> This plugin is currently in active development and may not work perfectly in all cases. While the core functionality is stable, you may encounter edge cases or unexpected behavior. Please report any issues on GitHub, and always keep backups of your Canvas content.
+
 An Obsidian plugin for syncing course content with Canvas LMS. Download courses as markdown, edit them in Obsidian, and upload changes back to Canvas.
 
 ## Features
@@ -14,17 +17,14 @@ An Obsidian plugin for syncing course content with Canvas LMS. Download courses 
 
  ### Module Organization
 
- This plugin requires all course content to be organized in Canvas modules. The download process works by:
+ This plugin works best with content organized in Canvas modules. The download process:
 
- 1. Fetching all modules in the course
- 2. Fetching items within each module
- 3. Downloading the content for each item
+ 1. Fetches all modules in the course
+ 2. Fetches items within each module
+ 3. Downloads the content for each item
+ 4. **NEW**: Fetches ALL course files (including those not in modules) and adds them to a "Course Files" section
 
- **Important**: Content that exists in Canvas but is not added to any module will not be downloaded or synced. This
- includes:
- - Pages not added to modules
- - Assignments not added to modules
- - Discussions not added to modules
+ **Note**: Pages, assignments, and discussions that exist in Canvas but are not added to any module will not be downloaded. However, **files** uploaded to Canvas are now downloaded regardless of whether they're in modules, allowing you to link to any file using `[[File:filename.pdf]]` syntax.
 
 
 ## Installation
@@ -78,6 +78,8 @@ canvas_url: https://yourschool.instructure.com/courses/12345
 <!-- canvas_module_item_id: 222 -->
 Page content here...
 
+You can link to files using: [[File:document.pdf]] or [[File:My Document Name]]
+
 ## [assignment] Assignment Title
 <!-- canvas_assignment_id: 333 -->
 <!-- canvas_module_item_id: 444 -->
@@ -88,6 +90,20 @@ submission_types: online_upload, online_text_entry
 
 ---
 Assignment description here...
+
+---
+
+# Course Files
+
+<!-- Files uploaded to Canvas but not added to any module -->
+
+## [file] Document Name
+<!-- canvas_file_id: 555 -->
+filename: document.pdf
+
+## [file] Another File
+<!-- canvas_file_id: 666 -->
+filename: another-file.pdf
 ```
 
 ### Uploading Changes
@@ -110,24 +126,34 @@ Use these commands to insert new content templates:
 - `Canvas LMS Helper: Insert Canvas link` - Add an external link
 - `Canvas LMS Helper: Insert Canvas file` - Add a file reference
 
+### Linking to Files
+
+You can link to any file uploaded to Canvas using the `[[File:...]]` syntax:
+
+- `[[File:document.pdf]]` - Links using the filename
+- `[[File:My Document Title]]` - Links using the display name
+
+During upload, these links are automatically converted to proper Canvas file preview links. Files can be referenced whether they're in modules or not - the download process fetches all course files and adds them to the markdown.
+
 ## Supported Content Types
 
-| Type | Download | Upload | Notes |
-|------|----------|--------|-------|
-| Modules | Yes | Yes | Full support |
-| Pages | Yes | Yes | Full support |
-| Assignments | Yes | Yes | Full support |
-| Discussions | Yes | Yes | Full support |
-| Headers | Yes | Yes | SubHeader items |
-| External Links | Yes | Create only | Cannot update URLs |
-| Files | Yes | No | Download only |
+| Type | Download | Upload | Link Resolution | Notes |
+|------|----------|--------|----------------|-------|
+| Modules | Yes | Yes | N/A | Full support |
+| Pages | Yes | Yes | Yes | Full support with `[[page:Title]]` syntax |
+| Assignments | Yes | Yes | Yes | Full support with `[[assignment:Title]]` syntax |
+| Discussions | Yes | Yes | Yes | Full support with `[[discussion:Title]]` syntax |
+| Headers | Yes | Yes | N/A | SubHeader items |
+| External Links | Yes | Create only | N/A | Cannot update URLs |
+| Files | Yes | No | Yes | Download all files; link with `[[File:name]]` syntax; files cannot be uploaded via API |
 
 ## Limitations
 
-- File uploads are not supported (files are downloaded as references only)
-- External link URLs cannot be updated after creation
-- Some Canvas features (quizzes, rubrics, etc.) are not supported
-- To avoid conflicts, if you change something on the Canvas web page (like, you edit a page during class), you should re-download the markdown file before editing again so that you don't end up with conflicts from having changes on both sides (on the web and on the local markdown file).
+- **File uploads are not supported** - Files must be uploaded to Canvas manually through the web interface. However, you can link to any uploaded file using `[[File:...]]` syntax, and those links will be resolved during upload.
+- **External link URLs cannot be updated** after creation
+- **Pages, assignments, and discussions not in modules** are not downloaded (only files are fetched regardless of module placement)
+- **Some Canvas features are not supported** - quizzes, rubrics, grading schemes, etc.
+- **To avoid conflicts**, if you change something on the Canvas web page (like editing a page during class), re-download the markdown file before editing again to prevent conflicts from having changes on both sides.
 
 ## Security
 

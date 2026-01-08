@@ -66,11 +66,22 @@ export interface CanvasDiscussion {
 
 export interface CanvasFile {
 	id: number;
+	uuid: string;
 	display_name: string;
 	filename: string;
 	url: string;
+	preview_url?: string;
 	size: number;
 	'content-type': string;
 	created_at: string;
 	updated_at: string;
+}
+
+export interface CanvasFolder {
+	id: number;
+	name: string;
+	full_name: string;
+	parent_folder_id: number | null;
+	folders_url: string;
+	files_url: string;
 }

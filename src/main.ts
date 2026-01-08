@@ -11,7 +11,7 @@ import { InternalLinkModal } from './modals/internal-link-modal';
 import { ContentTypeModal } from './modals/content-type-modal';
 import { UploadPreviewModal } from './modals/upload-preview-modal';
 import { FolderPickerModal } from './modals/folder-picker-modal';
-import type { CanvasModule, CanvasModuleItem } from './canvas/types';
+import type { CanvasModule, CanvasModuleItem, CanvasFile } from './canvas/types';
 import type { ContentType } from './templates/template-types';
 import { buildModule, buildHeader, buildPage, buildLink, buildFile, buildAssignment, buildDiscussion, buildInternalLink } from './templates/template-builders';
 import { insertAtCursor } from './utils/editor-utils';
@@ -219,6 +219,10 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 			}
 		}
 
+		// Fetch ALL course files (including those not in modules)
+		const allFiles = await this.fetchAllCourseFiles(client, courseId);
+		itemsData.set('course_files', allFiles);
+
 		return { course, modules, itemsData };
 	}
 
@@ -261,6 +265,34 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 		} catch (error) {
 			console.warn(`Failed to fetch details for ${item.type} "${item.title}":`, error);
 			// Continue with other items even if one fails
+		}
+	}
+
+	/**
+	 * Fetch all files in a course, regardless of whether they're in modules
+	 */
+	private async fetchAllCourseFiles(
+		client: CanvasApiClient,
+		courseId: string
+	): Promise<CanvasFile[]> {
+		try {
+			const folders = await client.getCourseFolders(courseId);
+			const allFiles: CanvasFile[] = [];
+
+			for (const folder of folders) {
+				try {
+					const files = await client.getFolderFiles(folder.id);
+					allFiles.push(...files);
+				} catch (error) {
+					console.warn(`Failed to fetch files from folder "${folder.name}":`, error);
+					// Continue with other folders
+				}
+			}
+
+			return allFiles;
+		} catch (error) {
+			console.warn('Failed to fetch course files:', error);
+			return []; // Return empty array if fetch fails
 		}
 	}
 
