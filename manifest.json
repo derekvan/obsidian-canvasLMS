@@ -1,7 +1,7 @@
 {
   "id": "canvaslms-helper",
   "name": "Canvas LMS Helper",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "0.15.0",
   "description": "Download a canvas course to a Markdown file, edit, then send it back to the LMS. Create modules, assignments, pages, links, discussions, etc.",
   "author": "Derek Van Ittersum",
