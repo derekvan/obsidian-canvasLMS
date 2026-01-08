@@ -10,6 +10,23 @@ An Obsidian plugin for syncing course content with Canvas LMS. Download courses 
 - **Smart comparison**: Only updates content that has actually changed
 - **Template insertion**: Quickly add new modules, pages, assignments, and discussions
 
+## Requirements
+
+ ### Module Organization
+
+ This plugin requires all course content to be organized in Canvas modules. The download process works by:
+
+ 1. Fetching all modules in the course
+ 2. Fetching items within each module
+ 3. Downloading the content for each item
+
+ **Important**: Content that exists in Canvas but is not added to any module will not be downloaded or synced. This
+ includes:
+ - Pages not added to modules
+ - Assignments not added to modules
+ - Discussions not added to modules
+
+
 ## Installation
 
 > **Note**: This plugin is not yet available in the Obsidian Community Plugins directory. Use BRAT or manual installation for now.
