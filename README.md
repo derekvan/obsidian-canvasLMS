@@ -8,6 +8,7 @@ An Obsidian plugin for syncing course content with Canvas LMS. Download courses 
 ## Features
 
 - **Download courses**: Fetch your Canvas course structure (modules, pages, assignments, discussions) as a single markdown file
+- **Re-download**: Smart detection of existing Canvas files - automatically re-downloads when you run the download command with a Canvas file open
 - **Edit in Obsidian**: Work with your course content using Obsidian's powerful editing features
 - **Upload changes**: Push your edits back to Canvas with a preview of what will change
 - **Smart comparison**: Only updates content that has actually changed
@@ -59,6 +60,21 @@ An Obsidian plugin for syncing course content with Canvas LMS. Download courses 
 2. Enter your course ID (found in the Canvas URL: `/courses/12345`)
 3. Choose where to save the file
 4. The course will be downloaded as a markdown file
+
+### Re-downloading a Course
+
+After you've uploaded changes to Canvas, you can re-download the course to get fresh data (including new workflow IDs):
+
+1. Open the Canvas course markdown file in Obsidian
+2. Run the command `Canvas LMS Helper: Download course`
+3. The plugin automatically detects the course ID from the file's frontmatter
+4. You'll see a confirmation dialog showing the course name
+5. Click "Re-download" to replace the file with fresh data from Canvas
+
+This is useful for:
+- Getting updated workflow IDs after uploading new content
+- Syncing changes made on Canvas web interface back to your markdown file
+- Refreshing course data without having to enter the course ID again
 
 ### Editing Course Content
 
