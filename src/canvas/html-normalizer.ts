@@ -202,7 +202,14 @@ export function markdownToSimpleHtml(markdown: string): string {
 	// 7. Code
 	html = html.replace(/`(.+?)`/g, '<code>$1</code>');
 
-	// 8. Paragraph breaks - split on double newlines and wrap each block
+	// 8. Convert single newlines within blocks to <br> tags (BEFORE splitting into paragraphs)
+	// This handles hard line breaks within a paragraph (markdown: two trailing spaces + newline)
+	// But first, temporarily protect double newlines from being converted
+	html = html.replace(/\n\s*\n/g, '<<<PARAGRAPH_BREAK>>>');
+	html = html.replace(/\n/g, '<br>\n');
+	html = html.replace(/<<<PARAGRAPH_BREAK>>>/g, '\n\n');
+
+	// 9. Paragraph breaks - split on double newlines and wrap each block
 	const blocks = html.split(/\n\s*\n/);
 	html = blocks.map(block => {
 		const trimmed = block.trim();
@@ -212,10 +219,7 @@ export function markdownToSimpleHtml(markdown: string): string {
 			return trimmed;
 		}
 		return `<p>${trimmed}</p>`;
-	}).filter(b => b).join('\n');
-
-	// 9. Convert remaining single newlines to <br> tags
-	html = html.replace(/\n/g, '<br>\n');
+	}).filter(b => b).join('');
 
 	return html;
 }

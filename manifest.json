@@ -1,10 +1,9 @@
 {
-  "id": "canvaslms-helper",
-  "name": "Canvas LMS Helper",
-  "version": "0.2.1",
-  "minAppVersion": "0.15.0",
-  "description": "Download a canvas course to a Markdown file, edit, then send it back to the LMS. Create modules, assignments, pages, links, discussions, etc.",
-  "author": "Derek Van Ittersum",
-  "authorUrl": "https://github.com/derekvan",
-  "isDesktopOnly": false
+	"id": "canvaslms-helper",
+	"name": "Canvas LMS Helper",
+	"minAppVersion": "0.15.0",
+	"description": "Download a canvas course to a Markdown file, edit, then send it back to the LMS. Create modules, assignments, pages, links, discussions, etc.",
+	"author": "Derek Van Ittersum",
+	"authorUrl": "https://github.com/derekvan",
+	"isDesktopOnly": false
 }

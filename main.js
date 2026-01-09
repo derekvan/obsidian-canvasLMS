@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => CanvaslmsHelperPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian13 = require("obsidian");
+var import_obsidian14 = require("obsidian");
 
 // src/settings.ts
 var import_obsidian = require("obsidian");
@@ -2827,6 +2827,9 @@ function markdownToSimpleHtml(markdown) {
   html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
   html = html.replace(/_(.+?)_/g, "<em>$1</em>");
   html = html.replace(/`(.+?)`/g, "<code>$1</code>");
+  html = html.replace(/\n\s*\n/g, "<<<PARAGRAPH_BREAK>>>");
+  html = html.replace(/\n/g, "<br>\n");
+  html = html.replace(/<<<PARAGRAPH_BREAK>>>/g, "\n\n");
   const blocks = html.split(/\n\s*\n/);
   html = blocks.map((block) => {
     const trimmed = block.trim();
@@ -2835,8 +2838,7 @@ function markdownToSimpleHtml(markdown) {
       return trimmed;
     }
     return `<p>${trimmed}</p>`;
-  }).filter((b) => b).join("\n");
-  html = html.replace(/\n/g, "<br>\n");
+  }).filter((b) => b).join("");
   return html;
 }
 
@@ -3623,8 +3625,74 @@ var CourseUploader = class {
   }
 };
 
+// src/utils/frontmatter-utils.ts
+function extractCanvasCourseId(content) {
+  const lines = content.split("\n");
+  let inFrontmatter = false;
+  for (const line of lines) {
+    if (line.trim() === "---") {
+      if (!inFrontmatter) {
+        inFrontmatter = true;
+        continue;
+      } else {
+        break;
+      }
+    }
+    if (inFrontmatter) {
+      const match = line.match(/^canvas_course_id:\s*(.+)$/);
+      if (match) {
+        return match[1].trim();
+      }
+    }
+  }
+  return null;
+}
+
+// src/modals/confirmation-modal.ts
+var import_obsidian13 = require("obsidian");
+var ConfirmationModal = class extends import_obsidian13.Modal {
+  constructor(app, title, message, confirmText, onConfirm, onCancel) {
+    super(app);
+    this.titleEl.setText(title);
+    this.message = message;
+    this.confirmText = confirmText;
+    this.onConfirm = onConfirm;
+    this.onCancel = onCancel || (() => {
+    });
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    const messageEl = contentEl.createEl("p", {
+      text: this.message,
+      cls: "mod-warning"
+    });
+    messageEl.style.marginBottom = "20px";
+    const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const confirmButton = buttonContainer.createEl("button", {
+      text: this.confirmText,
+      cls: "mod-cta"
+    });
+    confirmButton.addEventListener("click", () => {
+      this.close();
+      this.onConfirm();
+    });
+    const cancelButton = buttonContainer.createEl("button", {
+      text: "Cancel"
+    });
+    cancelButton.addEventListener("click", () => {
+      this.close();
+      this.onCancel();
+    });
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
 // src/main.ts
-var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
+var CanvaslmsHelperPlugin = class extends import_obsidian14.Plugin {
   async onload() {
     await this.loadSettings();
     this.addSettingTab(new SettingsTab(this.app, this));
@@ -3707,16 +3775,77 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
     });
   }
   /**
-   * Main download course workflow
+   * Download course (smart command that detects re-download vs. new download)
    */
   async downloadCourse() {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile) {
+      const content = await this.app.vault.read(activeFile);
+      const courseId = extractCanvasCourseId(content);
+      if (courseId) {
+        await this.redownloadCourse(courseId, activeFile);
+        return;
+      }
+    }
+    await this.downloadCourseNew();
+  }
+  /**
+   * Re-download an existing Canvas course file
+   */
+  async redownloadCourse(courseId, file) {
     if (!this.settings.canvasUrl || !this.settings.canvasToken) {
-      new import_obsidian13.Notice("Please configure Canvas URL and token in settings");
+      new import_obsidian14.Notice("Please configure Canvas URL and token in settings");
+      return;
+    }
+    try {
+      const client = new CanvasApiClient(this.settings.canvasUrl, this.settings.canvasToken);
+      const course = await client.getCourse(courseId);
+      const confirmed = await new Promise((resolve) => {
+        new ConfirmationModal(
+          this.app,
+          "Re-download course from Canvas?",
+          `Course: ${course.name} (ID: ${courseId})
+
+This will replace the current file with fresh data from Canvas.`,
+          "Re-download",
+          () => resolve(true),
+          () => resolve(false)
+        ).open();
+      });
+      if (!confirmed) return;
+      const notice = new import_obsidian14.Notice("Downloading course from Canvas...", 0);
+      try {
+        const courseData = await this.fetchCourseData(client, courseId);
+        const formatter = new CanvasCourseFormatter();
+        const markdown = formatter.formatCourse(
+          courseId,
+          this.settings.canvasUrl,
+          courseData.modules,
+          courseData.itemsData
+        );
+        await this.app.vault.modify(file, markdown);
+        notice.hide();
+        new import_obsidian14.Notice("Course re-downloaded successfully!");
+      } catch (error) {
+        notice.hide();
+        throw error;
+      }
+    } catch (error) {
+      new import_obsidian14.Notice(`Error: ${error.message}`);
+      console.error("Canvas re-download error:", error);
+    }
+  }
+  /**
+   * Main download course workflow (new course)
+   */
+  async downloadCourseNew() {
+    if (!this.settings.canvasUrl || !this.settings.canvasToken) {
+      new import_obsidian14.Notice("Please configure Canvas URL and token in settings");
       return;
     }
     const courseId = await this.promptForCourseId();
     if (!courseId) return;
-    const notice = new import_obsidian13.Notice("Downloading course from Canvas...", 0);
+    const notice = new import_obsidian14.Notice("Downloading course from Canvas...", 0);
     try {
       const client = new CanvasApiClient(this.settings.canvasUrl, this.settings.canvasToken);
       const courseData = await this.fetchCourseData(client, courseId);
@@ -3731,10 +3860,10 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       const folderPath = await this.promptForFolder();
       if (folderPath === null) return;
       await this.saveCourseFile(courseId, courseData.course.name, markdown, folderPath);
-      new import_obsidian13.Notice("Course downloaded successfully!");
+      new import_obsidian14.Notice("Course downloaded successfully!");
     } catch (error) {
       notice.hide();
-      new import_obsidian13.Notice(`Error: ${error.message}`);
+      new import_obsidian14.Notice(`Error: ${error.message}`);
       console.error("Canvas download error:", error);
     }
   }
@@ -3845,15 +3974,15 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
     const safeName = courseName.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
     const filename = `Canvas Course ${courseId} - ${safeName}.md`;
     const fullPath = folderPath ? `${folderPath}/${filename}` : filename;
-    const normalizedPath = (0, import_obsidian13.normalizePath)(fullPath);
+    const normalizedPath = (0, import_obsidian14.normalizePath)(fullPath);
     const existingFile = this.app.vault.getAbstractFileByPath(normalizedPath);
-    if (existingFile instanceof import_obsidian13.TFile) {
+    if (existingFile instanceof import_obsidian14.TFile) {
       await this.app.vault.modify(existingFile, markdown);
     } else {
       await this.app.vault.create(normalizedPath, markdown);
     }
     const file = this.app.vault.getAbstractFileByPath(normalizedPath);
-    if (file instanceof import_obsidian13.TFile) {
+    if (file instanceof import_obsidian14.TFile) {
       const leaf = this.app.workspace.getLeaf(false);
       await leaf.openFile(file);
     }
@@ -3864,22 +3993,22 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
   async uploadCourse() {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
-      new import_obsidian13.Notice("No active file. Please open a Canvas course file.");
+      new import_obsidian14.Notice("No active file. Please open a Canvas course file.");
       return;
     }
     if (!this.settings.canvasUrl || !this.settings.canvasToken) {
-      new import_obsidian13.Notice("Please configure Canvas URL and token in settings");
+      new import_obsidian14.Notice("Please configure Canvas URL and token in settings");
       return;
     }
     const content = await this.app.vault.read(activeFile);
     const parser = new MarkdownParser(content);
     const { frontmatter, modules } = parser.parse();
     if (!frontmatter.canvas_course_id) {
-      new import_obsidian13.Notice("Error: Missing canvas_course_id in frontmatter");
+      new import_obsidian14.Notice("Error: Missing canvas_course_id in frontmatter");
       return;
     }
     if (!frontmatter.canvas_url) {
-      new import_obsidian13.Notice("Error: Missing canvas_url in frontmatter");
+      new import_obsidian14.Notice("Error: Missing canvas_url in frontmatter");
       return;
     }
     const uploader = new CourseUploader(
@@ -3887,36 +4016,36 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       this.settings.canvasToken,
       frontmatter.canvas_course_id
     );
-    const previewNotice = new import_obsidian13.Notice("Analyzing changes...", 0);
+    const previewNotice = new import_obsidian14.Notice("Analyzing changes...", 0);
     try {
       const preview = await uploader.generatePreview(modules);
       previewNotice.hide();
       new UploadPreviewModal(this.app, preview, async () => {
-        const uploadNotice = new import_obsidian13.Notice("Uploading to Canvas...", 0);
+        const uploadNotice = new import_obsidian14.Notice("Uploading to Canvas...", 0);
         try {
           const stats = await uploader.upload(modules, false);
           uploadNotice.hide();
           if (stats.errors.length > 0) {
-            new import_obsidian13.Notice(
+            new import_obsidian14.Notice(
               `Upload complete with errors: ${stats.itemsCreated} created, ${stats.itemsUpdated} updated, ${stats.itemsSkipped} skipped, ${stats.errors.length} errors (see console)`,
               1e4
             );
             console.error("Upload errors:", stats.errors);
           } else {
-            new import_obsidian13.Notice(
+            new import_obsidian14.Notice(
               `Upload complete: ${stats.itemsCreated} created, ${stats.itemsUpdated} updated, ${stats.itemsSkipped} skipped`,
               5e3
             );
           }
         } catch (error) {
           uploadNotice.hide();
-          new import_obsidian13.Notice(`Upload error: ${error.message}`);
+          new import_obsidian14.Notice(`Upload error: ${error.message}`);
           console.error("Canvas upload error:", error);
         }
       }).open();
     } catch (error) {
       previewNotice.hide();
-      new import_obsidian13.Notice(`Error generating preview: ${error.message}`);
+      new import_obsidian14.Notice(`Error generating preview: ${error.message}`);
       console.error("Canvas preview error:", error);
     }
   }
@@ -3940,7 +4069,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       (title) => {
         const markdown = buildModule({ title });
         insertAtCursor(editor, markdown);
-        new import_obsidian13.Notice("Module inserted");
+        new import_obsidian14.Notice("Module inserted");
       }
     );
     modal.open();
@@ -3954,7 +4083,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       (title) => {
         const markdown = buildHeader({ title });
         insertAtCursor(editor, markdown);
-        new import_obsidian13.Notice("Header inserted");
+        new import_obsidian14.Notice("Header inserted");
       }
     );
     modal.open();
@@ -3968,7 +4097,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       (title) => {
         const markdown = buildPage({ title });
         insertAtCursor(editor, markdown);
-        new import_obsidian13.Notice("Page inserted");
+        new import_obsidian14.Notice("Page inserted");
       }
     );
     modal.open();
@@ -3984,7 +4113,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       (data) => {
         const markdown = buildLink({ title: data.field1, url: data.field2 });
         insertAtCursor(editor, markdown);
-        new import_obsidian13.Notice("Link inserted");
+        new import_obsidian14.Notice("Link inserted");
       }
     );
     modal.open();
@@ -4000,7 +4129,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       (data) => {
         const markdown = buildFile({ title: data.field1, filename: data.field2 });
         insertAtCursor(editor, markdown);
-        new import_obsidian13.Notice("File inserted");
+        new import_obsidian14.Notice("File inserted");
       }
     );
     modal.open();
@@ -4011,7 +4140,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       (data) => {
         const markdown = buildAssignment(data);
         insertAtCursor(editor, markdown);
-        new import_obsidian13.Notice("Assignment inserted");
+        new import_obsidian14.Notice("Assignment inserted");
       }
     );
     modal.open();
@@ -4022,7 +4151,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       (data) => {
         const markdown = buildDiscussion(data);
         insertAtCursor(editor, markdown);
-        new import_obsidian13.Notice("Discussion inserted");
+        new import_obsidian14.Notice("Discussion inserted");
       }
     );
     modal.open();
@@ -4033,7 +4162,7 @@ var CanvaslmsHelperPlugin = class extends import_obsidian13.Plugin {
       (data) => {
         const markdown = buildInternalLink(data);
         insertAtCursor(editor, markdown);
-        new import_obsidian13.Notice("Internal link inserted");
+        new import_obsidian14.Notice("Internal link inserted");
       }
     );
     modal.open();

@@ -17,6 +17,8 @@ import { buildModule, buildHeader, buildPage, buildLink, buildFile, buildAssignm
 import { insertAtCursor } from './utils/editor-utils';
 import { MarkdownParser } from './upload/parser';
 import { CourseUploader } from './upload/uploader';
+import { extractCanvasCourseId } from './utils/frontmatter-utils';
+import { ConfirmationModal } from './modals/confirmation-modal';
 
 export default class CanvaslmsHelperPlugin extends Plugin {
 	settings: typeof DEFAULT_SETTINGS;
@@ -120,9 +122,91 @@ export default class CanvaslmsHelperPlugin extends Plugin {
 	}
 
 	/**
-	 * Main download course workflow
+	 * Download course (smart command that detects re-download vs. new download)
 	 */
 	private async downloadCourse(): Promise<void> {
+		// Check if active file is a Canvas course file
+		const activeFile = this.app.workspace.getActiveFile();
+
+		if (activeFile) {
+			const content = await this.app.vault.read(activeFile);
+			const courseId = extractCanvasCourseId(content);
+
+			if (courseId) {
+				// Re-download flow
+				await this.redownloadCourse(courseId, activeFile);
+				return;
+			}
+		}
+
+		// Fall back to new download flow
+		await this.downloadCourseNew();
+	}
+
+	/**
+	 * Re-download an existing Canvas course file
+	 */
+	private async redownloadCourse(courseId: string, file: TFile): Promise<void> {
+		// 1. Validate settings
+		if (!this.settings.canvasUrl || !this.settings.canvasToken) {
+			new Notice('Please configure Canvas URL and token in settings');
+			return;
+		}
+
+		try {
+			// 2. Fetch course info for confirmation
+			const client = new CanvasApiClient(this.settings.canvasUrl, this.settings.canvasToken);
+			const course = await client.getCourse(courseId);
+
+			// 3. Show confirmation modal
+			const confirmed = await new Promise<boolean>((resolve) => {
+				new ConfirmationModal(
+					this.app,
+					'Re-download course from Canvas?',
+					`Course: ${course.name} (ID: ${courseId})\n\nThis will replace the current file with fresh data from Canvas.`,
+					'Re-download',
+					() => resolve(true),
+					() => resolve(false)
+				).open();
+			});
+
+			if (!confirmed) return;
+
+			// 4. Download and replace
+			const notice = new Notice('Downloading course from Canvas...', 0);
+
+			try {
+				const courseData = await this.fetchCourseData(client, courseId);
+
+				const formatter = new CanvasCourseFormatter();
+				const markdown = formatter.formatCourse(
+					courseId,
+					this.settings.canvasUrl,
+					courseData.modules,
+					courseData.itemsData
+				);
+
+				// Replace file content
+				await this.app.vault.modify(file, markdown);
+
+				notice.hide();
+				new Notice('Course re-downloaded successfully!');
+
+			} catch (error) {
+				notice.hide();
+				throw error;
+			}
+
+		} catch (error) {
+			new Notice(`Error: ${error.message}`);
+			console.error('Canvas re-download error:', error);
+		}
+	}
+
+	/**
+	 * Main download course workflow (new course)
+	 */
+	private async downloadCourseNew(): Promise<void> {
 		// 1. Validate settings
 		if (!this.settings.canvasUrl || !this.settings.canvasToken) {
 			new Notice('Please configure Canvas URL and token in settings');
