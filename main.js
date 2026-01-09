@@ -2820,6 +2820,7 @@ function markdownToSimpleHtml(markdown) {
   html = html.replace(/^\s*\*\s+(.+)$/gm, "<li>$1</li>");
   html = html.replace(/^\s*\d+\.\s+(.+)$/gm, "<li>$1</li>");
   html = html.replace(/(<li>.*<\/li>\s*)+/gs, "<ul>$&</ul>");
+  html = html.replace(/(<\/li>)\n+(<li>)/g, "$1$2");
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/__(.+?)__/g, "<strong>$1</strong>");

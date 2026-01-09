@@ -185,6 +185,8 @@ export function markdownToSimpleHtml(markdown: string): string {
 	html = html.replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>');
 	// Wrap consecutive list items (simplified - treats all as ul for comparison purposes)
 	html = html.replace(/(<li>.*<\/li>\s*)+/gs, '<ul>$&</ul>');
+	// Remove newlines between list items to prevent <br> tags being added later
+	html = html.replace(/(<\/li>)\n+(<li>)/g, '$1$2');
 
 	// 4. Links
 	html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
