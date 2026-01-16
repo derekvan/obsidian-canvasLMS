@@ -2809,11 +2809,11 @@ function markdownToSimpleHtml(markdown) {
   if (!markdown) return "";
   let html = markdown;
   html = html.replace(/\\([_*\[\]\\`#+()\-!])/g, "$1");
-  html = html.replace(/^######\s+(.+)$/gm, "<h6>$1</h6>");
-  html = html.replace(/^#####\s+(.+)$/gm, "<h5>$1</h5>");
-  html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
-  html = html.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
-  html = html.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^######\s+(.+)$/gm, "<h4>$1</h4>");
+  html = html.replace(/^#####\s+(.+)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^####\s+(.+)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^###\s+(.+)$/gm, "<h1>$1</h1>");
+  html = html.replace(/^##\s+(.+)$/gm, "<h1>$1</h1>");
   html = html.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">');
   html = html.replace(/^\s*-\s+(.+)$/gm, "<li>$1</li>");

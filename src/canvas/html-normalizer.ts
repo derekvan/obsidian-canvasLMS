@@ -167,11 +167,12 @@ export function markdownToSimpleHtml(markdown: string): string {
 	html = html.replace(/\\([_*\[\]\\`#+()\-!])/g, '$1');
 
 	// 1. Headers (MUST BE FIRST to avoid conflicts, and in order from most # to least)
-	html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
-	html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
-	html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
-	html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
-	html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+	// Unshift by 2 levels to reverse the +2 shift applied during download
+	html = html.replace(/^######\s+(.+)$/gm, '<h4>$1</h4>');
+	html = html.replace(/^#####\s+(.+)$/gm, '<h3>$1</h3>');
+	html = html.replace(/^####\s+(.+)$/gm, '<h2>$1</h2>');
+	html = html.replace(/^###\s+(.+)$/gm, '<h1>$1</h1>');
+	html = html.replace(/^##\s+(.+)$/gm, '<h1>$1</h1>');
 	html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
 
 	// 2. Images (BEFORE links to avoid ![alt](url) being matched as link)
