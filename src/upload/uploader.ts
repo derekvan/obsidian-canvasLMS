@@ -70,6 +70,10 @@ export class CourseUploader {
 		this.log('=== STARTING PREVIEW GENERATION ===');
 		this.log(`Total modules to process: ${modules.length}`);
 
+		// Pre-register all course files for link resolution (needed for accurate preview)
+		this.linkResolver.clear();
+		await this.registerAllCourseFiles();
+
 		// Fetch existing Canvas data for comparison
 		const canvasData = await this.fetchCanvasData(modules);
 		this.log(`Fetched Canvas data entries: ${canvasData.size}`);
@@ -251,6 +255,9 @@ export class CourseUploader {
 		// Clear link resolver
 		this.linkResolver.clear();
 
+		// Pre-register all course files for link resolution
+		await this.registerAllCourseFiles();
+
 		// Fetch existing Canvas data for comparison
 		const canvasData = await this.fetchCanvasData(modules);
 
@@ -333,6 +340,44 @@ export class CourseUploader {
 		}
 
 		return data;
+	}
+
+	/**
+	 * Pre-register all course files for link resolution
+	 */
+	private async registerAllCourseFiles(): Promise<void> {
+		try {
+			// Fetch all folders in the course
+			const folders = await this.apiClient.getCourseFolders(this.courseId);
+
+			for (const folder of folders) {
+				// Fetch all files in this folder
+				const files = await this.apiClient.getFolderFiles(folder.id);
+
+				for (const file of files) {
+					// Construct preview URL
+					const baseUrl = this.apiClientWrite['_baseUrl'];
+					let fileUrl = `${baseUrl}/courses/${this.courseId}/files/${file.id}`;
+
+					// Extract verifier from download URL if present
+					const verifierMatch = file.url.match(/[?&]verifier=([^&]+)/);
+					if (verifierMatch) {
+						fileUrl += `?verifier=${verifierMatch[1]}`;
+					}
+
+					// Register with display_name
+					this.linkResolver.register('file', file.display_name, fileUrl);
+
+					// Also register with filename if different
+					if (file.filename !== file.display_name) {
+						this.linkResolver.register('file', file.filename, fileUrl);
+					}
+				}
+			}
+		} catch (error) {
+			// Log but don't fail - link resolution is best-effort
+			console.warn('Failed to fetch course files for link resolution', error);
+		}
 	}
 
 	/**

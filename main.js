@@ -3097,6 +3097,8 @@ var CourseUploader = class {
     const preview = [];
     this.log("=== STARTING PREVIEW GENERATION ===");
     this.log(`Total modules to process: ${modules.length}`);
+    this.linkResolver.clear();
+    await this.registerAllCourseFiles();
     const canvasData = await this.fetchCanvasData(modules);
     this.log(`Fetched Canvas data entries: ${canvasData.size}`);
     for (const module2 of modules) {
@@ -3241,6 +3243,7 @@ var CourseUploader = class {
       return stats;
     }
     this.linkResolver.clear();
+    await this.registerAllCourseFiles();
     const canvasData = await this.fetchCanvasData(modules);
     const itemsNeedingLinks = [];
     for (const module2 of modules) {
@@ -3302,6 +3305,31 @@ var CourseUploader = class {
       console.warn("Failed to fetch Canvas data, proceeding with upload", error);
     }
     return data;
+  }
+  /**
+   * Pre-register all course files for link resolution
+   */
+  async registerAllCourseFiles() {
+    try {
+      const folders = await this.apiClient.getCourseFolders(this.courseId);
+      for (const folder of folders) {
+        const files = await this.apiClient.getFolderFiles(folder.id);
+        for (const file of files) {
+          const baseUrl = this.apiClientWrite["_baseUrl"];
+          let fileUrl = `${baseUrl}/courses/${this.courseId}/files/${file.id}`;
+          const verifierMatch = file.url.match(/[?&]verifier=([^&]+)/);
+          if (verifierMatch) {
+            fileUrl += `?verifier=${verifierMatch[1]}`;
+          }
+          this.linkResolver.register("file", file.display_name, fileUrl);
+          if (file.filename !== file.display_name) {
+            this.linkResolver.register("file", file.filename, fileUrl);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to fetch course files for link resolution", error);
+    }
   }
   /**
    * Upload a single module and its items
