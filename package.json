@@ -1,6 +1,6 @@
 {
   "name": "canvaslms-helper",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "Download a canvas course to a Markdown file, edit, then send it back to the LMS. Create modules, assignments, pages, links, discussions, etc.",
   "main": "main.js",
   "scripts": {
