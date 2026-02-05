@@ -2824,8 +2824,16 @@ function markdownToSimpleHtml(markdown) {
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/__(.+?)__/g, "<strong>$1</strong>");
+  const attrPlaceholders = [];
+  html = html.replace(/(href|src|alt)="([^"]+)"/g, (match) => {
+    attrPlaceholders.push(match);
+    return `###ATTR${attrPlaceholders.length - 1}###`;
+  });
   html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
   html = html.replace(/_(.+?)_/g, "<em>$1</em>");
+  html = html.replace(/###ATTR(\d+)###/g, (_, index) => {
+    return attrPlaceholders[parseInt(index)];
+  });
   html = html.replace(/`(.+?)`/g, "<code>$1</code>");
   html = html.replace(/\n\s*\n/g, "<<<PARAGRAPH_BREAK>>>");
   html = html.replace(/\n/g, "<br>\n");

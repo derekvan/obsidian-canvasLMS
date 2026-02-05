@@ -196,9 +196,20 @@ export function markdownToSimpleHtml(markdown: string): string {
 	html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 	html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
 
-	// 6. Italic
+	// 6. Italic - protect URLs in href/src attributes first
+	const attrPlaceholders: string[] = [];
+	html = html.replace(/(href|src|alt)="([^"]+)"/g, (match) => {
+		attrPlaceholders.push(match);
+		return `###ATTR${attrPlaceholders.length - 1}###`;
+	});
+
 	html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
 	html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+
+	// Restore protected attributes
+	html = html.replace(/###ATTR(\d+)###/g, (_, index) => {
+		return attrPlaceholders[parseInt(index)];
+	});
 
 	// 7. Code
 	html = html.replace(/`(.+?)`/g, '<code>$1</code>');
